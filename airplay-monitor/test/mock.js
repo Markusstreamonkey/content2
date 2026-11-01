@@ -82,7 +82,9 @@
     callTool: async (server, tool, input) => {
       window.__calls.push(tool);
       if (server !== "aireal Live Platform MCP") throw { code: "server_not_connected", message: "no such server" };
-      await new Promise((r) => setTimeout(r, 5));
+      window.__live = (window.__live || 0) + 1; window.__maxLive = Math.max(window.__maxLive || 0, window.__live);
+      try { await new Promise((r) => setTimeout(r, 5)); } finally { window.__live--; }
+      if (window.__RATELIMIT && rnd() < 0.3) { window.__rejected = (window.__rejected || 0) + 1; throw { code: "tool_error", message: "HTTP 429: Rate limit exceeded" }; }
       const payload = handlers[tool](input || {});
       return { content: [{ type: "text", text: JSON.stringify(payload) }], payload };
     },

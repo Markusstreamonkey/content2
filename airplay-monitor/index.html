@@ -185,7 +185,7 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
       <summary>Zählweise</summary>
       <ul>
         <li>Ein Play ist ein Titel, den der Sender selbst in seinen Metadaten (ICY) ankündigt. Sender ohne verwertbare Titelangaben fehlen in der Zählung.</li>
-        <li><b>Alle Sender:</b> Die Schnittstelle liefert bei breiten Abfragen höchstens 200 Zeilen. Der Monitor sammelt deshalb zuerst Kandidaten aus mehreren Teilabfragen und dem Musikkatalog und zählt jeden Kandidaten danach einzeln exakt nach. Weil ein Song nie mehr Plays hat als sein Interpret, werden zusätzlich alle Titel jedes Interpreten gezählt, der mindestens so viele Plays hat wie der 20. Song. Die angezeigten Zahlen sind exakt.</li>
+        <li><b>Alle Sender:</b> Die Schnittstelle liefert bei breiten Abfragen höchstens 200 Zeilen. Der Monitor sammelt deshalb zuerst Kandidaten aus mehreren Teilabfragen und dem Musikkatalog und zählt jeden Kandidaten danach einzeln exakt nach. Breit, aber selten gespielte Titel und Interpreten liefert der Musikkatalog als Kandidaten, weil er erfasst, auf wie vielen Sendern ein Titel bestätigt ist. Weil ein Song nie mehr Plays hat als sein Interpret, werden zusätzlich alle Titel jedes Interpreten gezählt, der mindestens so viele Plays hat wie der 20. Song. Die angezeigten Zahlen sind exakt.</li>
         <li><b>Senderauswahl:</b> Der Monitor liest den Sendeablauf jedes gewählten Senders und zählt jeden Musikblock. Ein Titel, dessen Musikblock nur durch einen kurzen Wortbeitrag unterbrochen ist (unter 75 Sekunden), gilt als ein Play. Ein angekündigter Titel, den Wortbeitrag oder Werbung vollständig überdecken, zählt ebenfalls, wie in der Airplay-Zählung des Services. Plays zählen in dem Zeitfenster, in dem sie beginnen.</li>
         <li>Regionale Fenster eines Programms (Antenne 1, radio SAW, hr1, Antenne Thüringen) zählen als eigene Sender.</li>
       </ul>
@@ -275,18 +275,33 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
   }
   const FATAL = new Set(["server_not_connected", "server_not_found", "needs_reauth", "selection_required", "approval_required", "not_in_manifest", "consent_required", "blocked_by_policy", "not_granted", "capability_disabled", "capability_removed"]);
 
+  // At most two requests in flight across the whole page: the aireal server rate-limits bursts.
+  let inFlight = 0;
+  const waiting = [];
+  async function slot(fn) {
+    if (inFlight >= 2) await new Promise((res) => waiting.push(res));
+    inFlight++;
+    try { return await fn(); }
+    finally { inFlight--; const next = waiting.shift(); if (next) next(); }
+  }
   async function call(tool, input) {
     if (!mcp) throw { code: "not_granted", message: "" };
     const once = async () => {
-      const r = await mcp.callTool(SERVER, TOOL[tool], input, CACHE);
+      const r = await slot(() => mcp.callTool(SERVER, TOOL[tool], input, CACHE));
       let p = r && r.payload;
       if (typeof p === "string") { try { p = JSON.parse(p); } catch (_) { /* keep text */ } }
       return p;
     };
-    try { return await once(); }
-    catch (e) {
-      if (e && e.retryable) { await sleep((e.retryAfterMs || 900) + Math.random() * 800); return once(); }
-      throw e;
+    // The aireal server answers bursts with HTTP 429. Reads are safe to repeat, so a rate-limited
+    // or transient failure is retried with growing pauses before it is shown.
+    const transient = (e) => e && (e.retryable || e.code === "rate_limited" || e.code === "server_unavailable" ||
+      /\b429\b|rate.?limit|too many requests/i.test(String(e.message || "") + " " + JSON.stringify(e.result || "")));
+    for (let attempt = 0; ; attempt++) {
+      try { return await once(); }
+      catch (e) {
+        if (!transient(e) || attempt >= 5) throw e;
+        await sleep(Math.max(e.retryAfterMs || 0, 1200 * Math.pow(2, attempt)) + Math.random() * 600);
+      }
     }
   }
   async function memo(k, fn) {
@@ -368,10 +383,12 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
     const tasks = [
       ...trackFilters.map(([f, v]) => () => call("airplay", { [f]: v, from: r.from, to: r.to })),
       ...artistFilters.map((v) => () => call("airplay", { artist: v, group_by: "artist", from: r.from, to: r.to })),
-      () => call("songs", { limit: 100 }),
+      // The catalog ranks titles by how many independent stations confirmed them: the breadth signal the
+      // capped airplay rows lack (a title or artist played a little on very many stations).
+      ...["", "e", "a", "i", "o", "n", "r", "s", "t"].map((v) => () => call("songs", v ? { artist: v, limit: 100 } : { limit: 100 })),
     ];
     progress("Kandidaten sammeln", 0, 1);
-    const res = await pool(tasks, 6, (d, n) => progress("Kandidaten sammeln", d, n));
+    const res = await pool(tasks, 2, (d, n) => progress("Kandidaten sammeln", d, n));
     const tRows = new Map(), aRows = new Map();
     const catalog = [];
     res.forEach((p, i) => {
@@ -395,15 +412,18 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
       }
     });
     const sum = (m) => { let x = 0; for (const v of m.values()) x += v; return x; };
+    const cat = new Map();
+    for (const c of catalog) cat.set(key(c.artist, c.title), c);
+    catalog.length = 0; catalog.push(...cat.values());
     const tCand = [...tRows.values()].map((c) => ({ artist: c.artist, title: c.title, score: sum(c.rows) })).sort((a, b) => b.score - a.score).slice(0, 55);
     const seen = new Set(tCand.map((c) => key(c.artist, c.title)));
     for (const s of catalog.sort((a, b) => (b.stations || 0) - (a.stations || 0))) {
-      if (tCand.length >= 75) break;
+      if (tCand.length >= 95) break;
       const k = key(s.artist, s.title);
       if (!seen.has(k)) { seen.add(k); tCand.push({ artist: s.artist, title: s.title, score: 0 }); }
     }
     progress("Songs exakt zählen", 0, tCand.length);
-    const tracks = (await pool(tCand.map((c) => () => verifyTrack(c.artist, c.title, r)), 6, (d, n) => progress("Songs exakt zählen", d, n)))
+    const tracks = (await pool(tCand.map((c) => () => verifyTrack(c.artist, c.title, r)), 2, (d, n) => progress("Songs exakt zählen", d, n)))
       .filter((x) => x && !x.__error);
 
     const aScore = new Map();
@@ -413,8 +433,16 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
       cur.score = Math.max(cur.score, t.plays); aScore.set(k, cur);
     }
     const aCand = [...aScore.values()].sort((a, b) => b.score - a.score).slice(0, 32);
+    // Breadth candidates: artists whose catalog titles are confirmed on the most stations in total.
+    const breadth = new Map();
+    for (const c of catalog) { const k = norm(c.artist); const cur = breadth.get(k) || { artist: c.artist, score: 0 }; cur.score += c.stations || 0; breadth.set(k, cur); }
+    const inA = new Set(aCand.map((c) => norm(c.artist)));
+    for (const c of [...breadth.values()].sort((a, b) => b.score - a.score)) {
+      if (aCand.length >= 75) break;
+      if (!inA.has(norm(c.artist))) { inA.add(norm(c.artist)); aCand.push(c); }
+    }
     progress("Interpreten exakt zählen", 0, aCand.length);
-    const artists = (await pool(aCand.map((c) => () => verifyArtist(c.artist, r)), 6, (d, n) => progress("Interpreten exakt zählen", d, n)))
+    const artists = (await pool(aCand.map((c) => () => verifyArtist(c.artist, r)), 2, (d, n) => progress("Interpreten exakt zählen", d, n)))
       .filter((x) => x && !x.__error);
 
     const dedupe = (arr, kf) => { const m = new Map(); for (const x of arr) if (!m.has(kf(x))) m.set(kf(x), x); return [...m.values()]; };
@@ -427,14 +455,33 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
     const big = dedupe(artists, (a) => norm(a.artist)).filter((a) => a.plays >= floor).sort((a, b) => b.plays - a.plays).slice(0, 25);
     progress("Titel der Interpreten prüfen", 0, big.length);
     // Two title sources per artist: its airplay rows (capped at 200) and its catalog entries (not capped by airplay).
-    const lists = await pool(big.flatMap((a) => [
-      () => call("airplay", { artist: a.artist, from: r.from, to: r.to }),
-      () => call("songs", { artist: a.artist, limit: 100 }),
-    ]), 6, (d, n) => progress("Titel der Interpreten prüfen", d, n));
+    const air = await pool(big.map((a) => () => call("airplay", { artist: a.artist, from: r.from, to: r.to })), 2, (d, n) => progress("Titel der Interpreten prüfen", d, n));
+    const capped = (p) => !p || p.__error || (p.tracks || []).reduce((n, t) => n + (t.per_station || []).length, 0) >= 200;
+    const cat2 = await pool(big.map((a, i) => () => (capped(air[i]) ? call("songs", { artist: a.artist, limit: 100 }) : Promise.resolve(null))), 2);
+    const lists = big.flatMap((a, i) => [air[i], cat2[i]]);
     const extra = [];
+    const exactFromList = [];
     lists.forEach((p, j) => {
       if (!p || p.__error) return;
       const who = big[Math.floor(j / 2)];
+      const isAirplay = j % 2 === 0;
+      const rows = isAirplay ? (p.tracks || []).reduce((n, t) => n + (t.per_station || []).length, 0) : 0;
+      if (isAirplay && rows < 200) {
+        // Below the cap the answer is complete: every title of this artist is already counted exactly.
+        const groups = new Map();
+        for (const t of p.tracks || []) {
+          if (norm(t.artist) !== norm(who.artist)) continue;
+          const k = key(t.artist, t.title);
+          groups.set(k, [...(groups.get(k) || []), t]);
+        }
+        for (const [k, hits] of groups) {
+          known.add(k);
+          if (!ranked.some((x) => key(x.artist, x.title) === k)) exactFromList.push({ artist: hits[0].artist, title: hits[0].title, ...mergeEntries(hits) });
+        }
+        who.complete = true;
+        return;
+      }
+      if (!isAirplay && big[Math.floor(j / 2)].complete) return;
       for (const t of p.tracks || p.songs || []) {
         if (norm(t.artist) !== norm(who.artist)) continue;
         const k = key(t.artist, t.title);
@@ -443,8 +490,9 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
     });
     const extraChecked = extra.slice(0, 160);
     progress("Weitere Songs exakt zählen", 0, extraChecked.length);
-    const more = (await pool(extraChecked.map((c) => () => verifyTrack(c.artist, c.title, r)), 6, (d, n) => progress("Weitere Songs exakt zählen", d, n)))
+    const more = (await pool(extraChecked.map((c) => () => verifyTrack(c.artist, c.title, r)), 2, (d, n) => progress("Weitere Songs exakt zählen", d, n)))
       .filter((x) => x && !x.__error);
+    more.push(...exactFromList);
     tracks.push(...more);
     return {
       mode: "fleet",
@@ -614,7 +662,7 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
     const view = $("view");
     if (!c) {
       view.replaceChildren(el("section", { class: "panel" }, el("h2", { text: "Noch keine Charts geladen" }),
-        el("p", { class: "note", text: "Ohne Senderauswahl zählt der Monitor über alle Sender; ein Lauf dauert etwa eine halbe Minute. Mit Senderauswahl wird exakt aus dem Sendeablauf gezählt." })));
+        el("p", { class: "note", text: "Ohne Senderauswahl zählt der Monitor über alle Sender; ein Lauf dauert zwei bis drei Minuten, weil der aireal-Server höchstens zwei Abfragen gleichzeitig zulässt. Mit Senderauswahl wird exakt aus dem Sendeablauf gezählt." })));
       return;
     }
     const maxS = c.songs[0] ? c.songs[0].plays : 1, maxA = c.artists[0] ? c.artists[0].plays : 1;
@@ -736,7 +784,7 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
     }).catch((e) => alive() && kpiBox.replaceChildren(errorPanel(e)));
 
     const bs = buckets(r);
-    pool(bs.map((b) => () => verifyTrack(v.artist, v.title, { from: b.from, to: b.to })), 4).then((res) => {
+    pool(bs.map((b) => () => verifyTrack(v.artist, v.title, { from: b.from, to: b.to })), 2).then((res) => {
       if (!alive()) return;
       const pts = bs.map((b, i) => ({ label: b.label, v: res[i] && !res[i].__error && res[i] ? res[i].plays : 0 }));
       trend.replaceChildren(el("div", { class: "panel-head" }, el("h2", { text: state.days === 1 ? "Plays je 4 Stunden" : "Plays je Tag" }), el("span", { class: "label", text: "alle Sender" })),
@@ -796,7 +844,7 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
         const k = norm(t.title);
         if (!seen.has(k)) { seen.add(k); titles.push(t.title); }
       }
-      const res = (await pool(titles.slice(0, 20).map((t) => () => verifyTrack(v.artist, t, r)), 5)).filter((x) => x && !x.__error).sort((a, b) => b.plays - a.plays);
+      const res = (await pool(titles.slice(0, 20).map((t) => () => verifyTrack(v.artist, t, r)), 2)).filter((x) => x && !x.__error).sort((a, b) => b.plays - a.plays);
       if (!alive()) return;
       const max = res[0] ? res[0].plays : 1;
       songs.replaceChildren(el("div", { class: "panel-head" }, el("h2", { text: "Titel" }), el("span", { class: "label", text: "Plays" })),

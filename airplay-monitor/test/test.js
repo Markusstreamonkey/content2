@@ -6,12 +6,15 @@ const fs = require('fs');
   const errs = [];
   p.on('pageerror', e => errs.push('pageerror: ' + e.message));
   p.on('console', m => { if (m.type() === 'error' && !/fonts|ERR_|net::/.test(m.text())) errs.push('console: ' + m.text()); });
+  const FIXED = Math.floor(Date.now() / 9e5) * 9e5 + 60e3;
+  await p.addInitScript((f) => { Date.now = () => f; }, FIXED);
+  if (process.env.RATELIMIT) await p.addInitScript(() => { window.__RATELIMIT = true; });
   await p.addInitScript({ path: __dirname + '/mock.js' });
   const html = '<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"></head><body>' + fs.readFileSync(__dirname + '/../index.html', 'utf8') + '</body></html>';
   fs.writeFileSync('page.html', html);
   await p.goto('file://' + process.cwd() + '/page.html');
   // fleet mode loads automatically
-  await p.waitForSelector('text=Top 20 Songs', { timeout: 60000 });
+  await p.waitForSelector('text=Top 20 Songs', { timeout: 600000 });
   const songRows = await p.$$eval('section.panel:nth-of-type(1) .row', rs => rs.map(r => [r.querySelector('.t').textContent, r.querySelector('.a') && r.querySelector('.a').textContent, r.querySelector('.fig b').textContent, r.querySelector('.fig small').textContent]));
   const artRows = await p.$$eval('.grid2 section.panel:nth-of-type(2) .row', rs => rs.map(r => [r.querySelector('.t').textContent, r.querySelector('.fig b').textContent]));
   // ground truth over the same window as the page (7 days back from 15-min floor)
@@ -31,7 +34,7 @@ const fs = require('fs');
   const okMembers = pageSet.every(x => allTruth.has(x) || false) && truthSet.filter(x => +x.split('=')[1] > cut).every(x => pageSet.includes(x));
   console.log('TOP20 SONGS correct (values per rank equal, members correct, ties at cutoff allowed):', okVals && okMembers);
   console.log('ARTISTS page:', artRows.length, artRows.slice(0, 5)); console.log('TRUTH artists:', truth.artists.slice(0, 5));
-  console.log('calls for fleet:', truth.calls);
+  console.log('calls for fleet:', truth.calls, '| max parallel:', await p.evaluate(() => window.__maxLive), '| rejected with 429:', await p.evaluate(() => window.__rejected || 0));
   await p.screenshot({ path: 'fleet.png', fullPage: false });
   // drill: song
   await p.click('.grid2 section.panel:nth-of-type(1) .row >> nth=0');
