@@ -276,6 +276,7 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
   const FATAL = new Set(["server_not_connected", "server_not_found", "needs_reauth", "selection_required", "approval_required", "not_in_manifest", "consent_required", "blocked_by_policy", "not_granted", "capability_disabled", "capability_removed"]);
 
   // At most two requests in flight across the whole page: the aireal server rate-limits bursts.
+  const stats = { calls: 0, retries: 0, failed: 0 };
   let inFlight = 0;
   const waiting = [];
   async function slot(fn) {
@@ -287,6 +288,7 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
   async function call(tool, input) {
     if (!mcp) throw { code: "not_granted", message: "" };
     const once = async () => {
+      stats.calls++;
       const r = await slot(() => mcp.callTool(SERVER, TOOL[tool], input, CACHE));
       let p = r && r.payload;
       if (typeof p === "string") { try { p = JSON.parse(p); } catch (_) { /* keep text */ } }
@@ -299,7 +301,8 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
     for (let attempt = 0; ; attempt++) {
       try { return await once(); }
       catch (e) {
-        if (!transient(e) || attempt >= 5) throw e;
+        if (!transient(e) || attempt >= 5) { stats.failed++; throw e; }
+        stats.retries++;
         await sleep(Math.max(e.retryAfterMs || 0, 1200 * Math.pow(2, attempt)) + Math.random() * 600);
       }
     }
@@ -896,16 +899,39 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
     btn.disabled = true; setLamp(true);
     state.nav = []; state.runId++;
     const r = range();
+    const t0 = Date.now(), s0 = { ...stats };
     try {
       const c = state.selected.length ? await stationCharts(state.selected.slice(), r, progress) : await fleetCharts(r, progress);
       c.at = r.toD;
+      logRun({ ok: true, mode: c.mode, from: r.from, to: r.to, ms: Date.now() - t0, s0,
+        songs: c.songs.map((t) => ({ artist: t.artist, title: t.title, plays: t.plays, stations: t.stations })),
+        artists: c.artists.map((a) => ({ artist: a.artist, plays: a.plays, stations: a.stations })) });
       $("foot").textContent = "MAS Partners · Airplay Monitor · Quelle aireal Ad Fingerprinting · Stand " + dtf.format(r.toD);
       state.charts = c;
       clearStatus();
       render();
     } catch (e) {
+      logRun({ ok: false, mode: state.selected.length ? "stations" : "fleet", from: r.from, to: r.to, ms: Date.now() - t0, s0, code: e && e.code || "unknown", message: String(e && e.message || "") });
       showError(e, loadCharts);
     } finally { btn.disabled = false; setLamp(false); }
+  }
+
+  /* ---------- Run log ----------
+     Each chart run leaves a short record (window, request counts, Top 20) in the artifact's own store,
+     so the live behaviour can be checked afterwards. Failure to write never affects the page. */
+  let dbP = null;
+  function logRun(x) {
+    try {
+      if (!dbP) dbP = window.claude && window.claude.use ? window.claude.use("db").catch(() => null) : Promise.resolve(null);
+      dbP.then((db) => {
+        if (!db) return;
+        const rec = { at: new Date().toISOString(), ok: x.ok, mode: x.mode, days: state.days, from: x.from, to: x.to,
+          stations: state.selected.slice(), ms: x.ms, calls: stats.calls - x.s0.calls, retries: stats.retries - x.s0.retries,
+          failed: stats.failed - x.s0.failed, code: x.code || null, message: x.message || null,
+          songs: x.songs || [], artists: x.artists || [] };
+        return db.collection("runs").add(rec);
+      }).catch(() => {});
+    } catch (_) { /* no store in this view */ }
   }
 
   /* ---------- Wire up ---------- */

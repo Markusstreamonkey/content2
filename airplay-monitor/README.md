@@ -23,3 +23,6 @@ Live-Airplay-Charts aus dem aireal Ad Fingerprinting (ICY-Titelangaben der über
 `node airplay-monitor/test/realtest.js <timeline.json>` spielt einen echten `get_stream_timeline`-Abruf (24 h, ein Sender) durch die Seite. Abgleich am 01.11.2026 für Nova 96.9 (31.10. 20:00 – 01.11. 20:00 UTC) gegen `song_airplay`: Bed on Fire 10/10, Stop The Wedding! 8/8, Babydoll 8/8, Patient Zero 8/8, Great Expectation 7/7, Housewife 7/7.
 
 `REAL_DIR=<ordner> node airplay-monitor/test/realfleet.js` prüft „Alle Sender“ gegen echte Daten: Der Ordner enthält `streams.json` und je Sender `tl_<id>.json` (echte `get_stream_timeline`-Antworten). Das Skript zählt daraus die exakten Top 20 und lässt die Seite gegen eine Nachbildung von `song_airplay` (inkl. 200-Zeilen-Kappung) laufen. Ergebnis am 01.11.2026 mit allen 160 Sendern (31.10. 20:00 – 01.11. 20:00 UTC, 49.530 Plays): Top 20 Songs und Top 20 Interpreten exakt. `RATELIMIT=1 node test/test.js` weist 30 % der Abfragen mit 429 ab und prüft, dass die Seite trotzdem korrekte Charts liefert.
+
+## Laufprotokoll
+Jeder Chart-Lauf legt in der Datenbank des Artifacts (`runs`) einen Eintrag an: Zeitfenster, Modus, Dauer, Anzahl Abfragen, Wiederholungen nach 429, endgültig fehlgeschlagene Abfragen, Fehlercode und Top 20. Damit lässt sich der Live-Betrieb nachträglich prüfen.
