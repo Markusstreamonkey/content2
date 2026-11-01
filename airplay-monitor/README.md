@@ -3,6 +3,7 @@
 Live-Airplay-Charts aus dem aireal Ad Fingerprinting (ICY-Titelangaben der überwachten Radiostreams).
 
 - Veröffentlicht als Claude-Artifact: https://claude.ai/artifact/T6BECLoRYNmmSRDcts5tan
+- Gestaltung nach dem MAS Partners Design System (Inter, Limette als einziger Akzent, Leinen-Neutral, Radius 0, dunkle Kopfleiste mit Wortmarke).
 - Datenzugriff live über den claude.ai-Connector „aireal Live Platform MCP“ (Tools `ad-fingerprinting_song_airplay`, `_search_songs`, `_get_stream_timeline`, `_list_streams`, `_list_stream_groups`).
 
 ## Funktionen (Stufe 1: Songanalyse)
@@ -12,5 +13,8 @@ Live-Airplay-Charts aus dem aireal Ad Fingerprinting (ICY-Titelangaben der über
 
 ## Zählweise
 - `song_airplay` liefert bei breiten Abfragen höchstens 200 (Titel × Sender)-Zeilen. „Alle Sender“ sammelt deshalb Kandidaten aus mehreren Teilabfragen und dem Musikkatalog und zählt jeden Kandidaten einzeln exakt nach.
-- Senderauswahl zählt exakt aus `get_stream_timeline` (Musikblöcke; Wiederholungen desselben Titels innerhalb von 8 Minuten = 1 Play).
+- Senderauswahl zählt exakt aus `get_stream_timeline` (Musikblöcke; Wiederholungen desselben Titels nur durch einen Wortbeitrag unter 75 s getrennt = 1 Play).
 - Für exakte Fleet-Charts ohne Kandidatenverfahren bräuchte der Service einen Top-N-Endpunkt (z. B. `song_airplay` ohne Filter mit `limit`).
+
+## Test
+`node airplay-monitor/test/test.js` startet Chromium (Playwright) mit einem nachgebauten Connector (`test/mock.js`, Testdaten in der echten Antwortform inkl. 200-Zeilen-Kappung) und prüft Charts, Drill-down und Senderauswahl gegen die Testdaten.
