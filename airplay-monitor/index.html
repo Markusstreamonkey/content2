@@ -1,0 +1,826 @@
+<title>Airplay Monitor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one working column — control bar, then two ranked chart lists side by side; drill-down views replace the lists with a breadcrumb trail. */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --ink: #121a24;
+  --muted: #5b6676;
+  --line: #d6dce4;
+  --bar: #2f4f7f;
+  --bar-soft: #dfe6f0;
+  --onair: #d63a1c;
+  --onair-soft: #fbe3dc;
+  --ok: #1f7a4d;
+  --warn: #9a6200;
+  --font-display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131a; --surface: #151c26; --ink: #e8edf3; --muted: #97a3b4; --line: #273242;
+    --bar: #7a9fd6; --bar-soft: #1f2a3a; --onair: #ff6b47; --onair-soft: #3a1d16;
+    --ok: #5cc595; --warn: #e0b04f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131a; --surface: #151c26; --ink: #e8edf3; --muted: #97a3b4; --line: #273242;
+  --bar: #7a9fd6; --bar-soft: #1f2a3a; --onair: #ff6b47; --onair-soft: #3a1d16;
+  --ok: #5cc595; --warn: #e0b04f; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; line-height: 1.1; }
+h1 { font-size: 2rem; font-weight: 800; font-stretch: 75%; letter-spacing: .01em; text-transform: uppercase; }
+h2 { font-size: 1.25rem; font-weight: 700; font-stretch: 85%; text-transform: uppercase; letter-spacing: .03em; }
+h3 { font-size: 1rem; font-weight: 700; font-stretch: 90%; }
+.label { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--onair); outline-offset: 2px; }
+a { color: var(--bar); }
+
+/* Header */
+.masthead { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
+.brand { display: flex; align-items: center; gap: 14px; }
+.lamp { display: inline-flex; align-items: center; gap: 6px; border: 2px solid var(--onair); color: var(--onair);
+  font-family: var(--font-display); font-weight: 800; font-stretch: 70%; font-size: .78rem; letter-spacing: .14em;
+  padding: 3px 8px; border-radius: 3px; }
+.lamp i { width: 8px; height: 8px; border-radius: 50%; background: var(--onair); box-shadow: 0 0 0 3px var(--onair-soft); }
+.lamp.idle { border-color: var(--line); color: var(--muted); }
+.lamp.idle i { background: var(--muted); box-shadow: none; }
+.sub { color: var(--muted); font-size: .88rem; max-width: 62ch; }
+
+/* Controls */
+.controls { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px;
+  display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: end; }
+.field { display: grid; gap: 6px; min-width: 0; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.seg button { background: transparent; border: 0; padding: 7px 14px; font-weight: 500; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.btn { border: 1px solid var(--line); background: var(--surface); padding: 7px 14px; border-radius: var(--r); font-weight: 500; }
+.btn.primary { background: var(--onair); border-color: var(--onair); color: #fff; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.picker { position: relative; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 36px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; background: var(--bar-soft); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: .85rem; }
+.chip button { border: 0; background: transparent; width: 22px; height: 22px; border-radius: 50%; line-height: 1; color: var(--muted); }
+.chip button:hover { background: var(--line); color: var(--ink); }
+.chip.all { padding-right: 10px; background: transparent; border: 1px dashed var(--line); color: var(--muted); }
+.pop { position: absolute; z-index: 5; top: calc(100% + 6px); left: 0; width: min(420px, calc(100vw - 32px));
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 12px 30px rgba(0,0,0,.18);
+  padding: 10px; display: grid; gap: 8px; }
+.pop input[type=search] { width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); }
+.pop .list { max-height: 300px; overflow-y: auto; display: grid; }
+.pop label { display: flex; gap: 8px; align-items: center; padding: 5px 4px; border-radius: 4px; cursor: pointer; }
+.pop label:hover { background: var(--bg); }
+.pop .groups { display: flex; flex-wrap: wrap; gap: 6px; }
+.pop .groups button { font-size: .78rem; border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 2px 9px; }
+.hint { font-size: .8rem; color: var(--muted); }
+
+/* Status */
+.status { display: grid; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; }
+.status.err { border-color: var(--onair); background: var(--onair-soft); }
+.meter { height: 6px; background: var(--bar-soft); border-radius: 3px; overflow: hidden; }
+.meter > span { display: block; height: 100%; background: var(--onair); width: 0; transition: width .25s ease; }
+
+/* Summary strip */
+.strip { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: baseline; }
+.strip .kv { display: grid; gap: 2px; }
+.strip .kv b { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; font-stretch: 80%; font-variant-numeric: tabular-nums; }
+
+/* Chart lists */
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 20px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.rows { display: grid; gap: 2px; }
+.row { display: grid; grid-template-columns: 2.2em minmax(0, 1fr) auto; gap: 4px 10px; align-items: center;
+  padding: 7px 6px; border-radius: 4px; border: 0; background: transparent; text-align: left; width: 100%; }
+.row:hover { background: var(--bg); }
+.rank { font-family: var(--font-display); font-weight: 800; font-stretch: 70%; font-size: 1.25rem; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.row:first-child .rank { color: var(--onair); }
+.who { min-width: 0; display: grid; gap: 3px; }
+.who .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who .a { color: var(--muted); font-size: .86rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.track { height: 6px; background: var(--bar-soft); border-radius: 3px; overflow: hidden; }
+.track > span { display: block; height: 100%; background: var(--bar); border-radius: 3px; }
+.row:first-child .track > span { background: var(--onair); }
+.fig { text-align: right; display: grid; gap: 1px; }
+.fig b { font-family: var(--font-data); font-weight: 500; font-variant-numeric: tabular-nums; font-size: 1rem; }
+.fig small { color: var(--muted); font-size: .75rem; white-space: nowrap; }
+
+/* Detail */
+.crumbs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: .88rem; }
+.crumbs button { border: 0; background: none; color: var(--bar); padding: 0; text-decoration: underline; text-underline-offset: 3px; }
+.crumbs span.sep { color: var(--muted); }
+.hero { display: grid; gap: 6px; }
+.hero h2 { font-size: clamp(1.6rem, 4vw, 2.4rem); text-transform: none; letter-spacing: 0; font-stretch: 80%; font-weight: 800; }
+.hero .by button { border: 0; background: none; padding: 0; color: var(--bar); font-size: 1.05rem; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.kpis > div { background: var(--surface); padding: 12px 14px; display: grid; gap: 4px; }
+.kpis b { font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; font-stretch: 80%; font-variant-numeric: tabular-nums; }
+.chartbox { overflow-x: auto; }
+.chartbox svg { display: block; width: 100%; min-width: 420px; height: auto; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px 20px; }
+.facts > div { display: grid; gap: 2px; min-width: 0; }
+.facts span:last-child { overflow-wrap: anywhere; }
+.feat { display: grid; grid-template-columns: 8.5em minmax(0,1fr) 3em; gap: 8px; align-items: center; font-size: .86rem; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font-size: .78rem; border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; color: var(--muted); }
+.note { font-size: .84rem; color: var(--muted); max-width: 75ch; }
+details.method { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 16px; }
+details.method summary { cursor: pointer; font-weight: 600; }
+details.method p, details.method li { font-size: .88rem; color: var(--muted); max-width: 80ch; }
+.empty { color: var(--muted); padding: 16px 6px; }
+@media (prefers-reduced-motion: reduce) { .meter > span { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <div class="brand">
+      <span class="lamp idle" id="lamp"><i></i>ON AIR</span>
+      <h1>Airplay Monitor</h1>
+    </div>
+    <p class="sub" id="source">Airplay-Charts aus den Titelangaben (ICY) der überwachten Radiostreams im aireal Ad Fingerprinting.</p>
+  </header>
+
+  <section class="controls" aria-label="Filter">
+    <div class="field">
+      <span class="label">Zeitraum</span>
+      <div class="seg" role="group" aria-label="Zeitraum">
+        <button type="button" id="d1" aria-pressed="false">24 Stunden</button>
+        <button type="button" id="d7" aria-pressed="true">7 Tage</button>
+      </div>
+    </div>
+    <div class="field picker" style="flex:1 1 320px">
+      <span class="label">Sender</span>
+      <div class="chips" id="chips"></div>
+      <div class="pop" id="pop" hidden>
+        <input type="search" id="q" placeholder="Sender suchen …" autocomplete="off">
+        <div class="groups" id="groups"></div>
+        <div class="list" id="list"></div>
+        <div class="hint">Bis zu 5 Sender. Ohne Auswahl zählt der Monitor über alle Sender.</div>
+      </div>
+    </div>
+    <div class="field">
+      <button type="button" class="btn primary" id="run">Charts laden</button>
+    </div>
+  </section>
+
+  <section id="status" class="status" hidden></section>
+  <main id="view"></main>
+
+  <details class="method">
+    <summary>So wird gezählt</summary>
+    <ul>
+      <li>Ein Play ist ein Titel, den der Sender selbst in seinen Metadaten (ICY) angekündigt hat. Sender ohne verwertbare Titelangaben fehlen in der Zählung.</li>
+      <li><b>Alle Sender:</b> Die Schnittstelle liefert bei breiten Abfragen höchstens 200 Zeilen. Der Monitor sammelt deshalb zuerst Kandidaten aus mehreren Teilabfragen und dem Musikkatalog und zählt jeden Kandidaten danach einzeln exakt nach. Die angezeigten Zahlen sind exakt; ein Titel mit gleichmäßig schwacher Rotation auf sehr vielen Sendern kann im Einzelfall als Kandidat fehlen.</li>
+      <li><b>Senderauswahl:</b> Der Monitor liest den Sendeablauf jedes gewählten Senders und zählt jeden Musikblock. Wiederholte Blöcke desselben Titels innerhalb von 8 Minuten gelten als ein Play.</li>
+      <li>Regionale Fenster eines Programms (z. B. Antenne 1, radio SAW) zählen als eigene Sender.</li>
+    </ul>
+  </details>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const SERVER = "aireal Live Platform MCP";
+  const TOOL = {
+    airplay: "ad-fingerprinting_song_airplay",
+    songs: "ad-fingerprinting_search_songs",
+    timeline: "ad-fingerprinting_get_stream_timeline",
+    streams: "ad-fingerprinting_list_streams",
+    groups: "ad-fingerprinting_list_stream_groups",
+  };
+  const MAX_STATIONS = 5;
+  const CACHE = { cache: { staleTime: 15 * 60e3, gcTime: 6 * 3600e3 } };
+
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === "class") n.className = v;
+      else if (k === "text") n.textContent = v;
+      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? "" : v);
+    }
+    for (const kid of kids.flat()) if (kid != null && kid !== false) n.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+    return n;
+  };
+  const nf = new Intl.NumberFormat("de-DE");
+  const dtf = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const dayf = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", weekday: "short", day: "2-digit", month: "2-digit" });
+  const hourf = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", weekday: "short", hour: "2-digit", minute: "2-digit" });
+  const fmtDT = (s) => (s ? dtf.format(new Date(s)) + " Uhr" : "–");
+  const norm = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const key = (a, t) => norm(a) + "\u0001" + norm(t);
+  const iso = (d) => d.toISOString().replace(/\.\d+Z$/, "Z");
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const KEYS = ["C", "C♯/D♭", "D", "D♯/E♭", "E", "F", "F♯/G♭", "G", "G♯/A♭", "A", "A♯/B♭", "B"];
+
+  const state = {
+    days: 7,
+    selected: [],
+    streams: [],
+    groups: [],
+    charts: null,
+    nav: [],
+    memo: new Map(),
+    runId: 0,
+  };
+  let mcp = null;
+
+  /* ---------- MCP access ---------- */
+  function errText(e) {
+    const code = e && e.code;
+    switch (code) {
+      case "server_not_connected":
+      case "server_not_found":
+        return "Der Connector „" + SERVER + "“ ist für dich nicht verbunden. Füge ihn in claude.ai unter Einstellungen → Connectors hinzu und lade die Seite neu.";
+      case "needs_reauth":
+        return "Die Anmeldung beim Connector „" + SERVER + "“ ist abgelaufen. Verbinde ihn in claude.ai unter Einstellungen → Connectors neu.";
+      case "selection_required":
+        return "Es gibt mehrere Connectors mit dem Namen „" + SERVER + "“. Wähle in der Abfrage von claude.ai einen davon aus.";
+      case "approval_required":
+      case "not_in_manifest":
+      case "consent_required":
+        return "Die Seite darf den Connector noch nicht nutzen. Erlaube den Zugriff, wenn claude.ai danach fragt, und starte die Abfrage erneut.";
+      case "blocked_by_policy":
+        return "Die Richtlinie deiner Organisation sperrt diese Abfrage.";
+      case "server_unavailable":
+        return "Der aireal-Server antwortet gerade nicht. Versuche es in einer Minute erneut.";
+      case "tool_error":
+        return "Der Server hat die Abfrage abgelehnt: " + (e.message || "ohne Begründung") + ".";
+      case "not_granted":
+      case "capability_disabled":
+      case "capability_removed":
+        return "In dieser Ansicht sind keine Live-Abfragen möglich. Öffne die Seite in claude.ai.";
+      default:
+        return "Die Abfrage ist fehlgeschlagen" + (e && e.message ? ": " + e.message : ".");
+    }
+  }
+  const FATAL = new Set(["server_not_connected", "server_not_found", "needs_reauth", "selection_required", "approval_required", "not_in_manifest", "consent_required", "blocked_by_policy", "not_granted", "capability_disabled", "capability_removed"]);
+
+  async function call(tool, input) {
+    if (!mcp) throw { code: "not_granted", message: "" };
+    const once = async () => {
+      const r = await mcp.callTool(SERVER, TOOL[tool], input, CACHE);
+      let p = r && r.payload;
+      if (typeof p === "string") { try { p = JSON.parse(p); } catch (_) { /* keep text */ } }
+      return p;
+    };
+    try { return await once(); }
+    catch (e) {
+      if (e && e.retryable) { await sleep((e.retryAfterMs || 900) + Math.random() * 800); return once(); }
+      throw e;
+    }
+  }
+  async function memo(k, fn) {
+    if (state.memo.has(k)) return state.memo.get(k);
+    const p = fn();
+    state.memo.set(k, p);
+    p.catch(() => state.memo.delete(k));
+    return p;
+  }
+  async function pool(tasks, size, onDone) {
+    const out = new Array(tasks.length);
+    let i = 0, done = 0, fatal = null;
+    const worker = async () => {
+      while (i < tasks.length && !fatal) {
+        const idx = i++;
+        try { out[idx] = await tasks[idx](); }
+        catch (e) { if (e && FATAL.has(e.code)) fatal = e; out[idx] = { __error: e }; }
+        done++; onDone && onDone(done, tasks.length);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(size, tasks.length) }, worker));
+    if (fatal) throw fatal;
+    return out;
+  }
+
+  /* ---------- Range ---------- */
+  function range(days = state.days) {
+    const to = new Date(Math.floor(Date.now() / 9e5) * 9e5);
+    const from = new Date(to.getTime() - days * 864e5);
+    return { from: iso(from), to: iso(to), fromD: from, toD: to };
+  }
+  function buckets(r) {
+    const n = state.days === 1 ? 6 : 7;
+    const step = (r.toD - r.fromD) / n;
+    return Array.from({ length: n }, (_, i) => {
+      const a = new Date(r.fromD.getTime() + i * step), b = new Date(r.fromD.getTime() + (i + 1) * step);
+      return { from: iso(a), to: iso(b), label: state.days === 1 ? hourf.format(a) : dayf.format(a) };
+    });
+  }
+
+  /* ---------- Exact counting (fleet) ---------- */
+  function mergeEntries(entries) {
+    const ps = new Map();
+    let plays = 0, first = null, last = null;
+    const spellings = new Set();
+    for (const e of entries) {
+      plays += e.total_plays || 0;
+      if (e.first_played_at && (!first || e.first_played_at < first)) first = e.first_played_at;
+      if (e.last_played_at && (!last || e.last_played_at > last)) last = e.last_played_at;
+      (e.spellings || []).forEach((s) => spellings.add(s));
+      for (const s of e.per_station || []) {
+        const cur = ps.get(s.stream_id) || { stream_id: s.stream_id, stream: s.stream, plays: 0 };
+        cur.plays += s.plays || 0; ps.set(s.stream_id, cur);
+      }
+    }
+    const per_station = [...ps.values()].sort((a, b) => b.plays - a.plays);
+    return { plays, stations: per_station.length, per_station, first, last, spellings: [...spellings] };
+  }
+  function verifyTrack(artist, title, r) {
+    return memo(["t", key(artist, title), r.from, r.to].join("|"), async () => {
+      const p = await call("airplay", { artist, title, from: r.from, to: r.to });
+      const hits = (p && p.tracks || []).filter((x) => norm(x.artist) === norm(artist) && norm(x.title) === norm(title));
+      if (!hits.length) return null;
+      return { artist: hits[0].artist, title: hits[0].title, ...mergeEntries(hits) };
+    });
+  }
+  function verifyArtist(name, r) {
+    return memo(["a", norm(name), r.from, r.to].join("|"), async () => {
+      const p = await call("airplay", { artist: name, group_by: "artist", from: r.from, to: r.to });
+      const hits = (p && p.tracks || []).filter((x) => norm(x.artist) === norm(name));
+      if (!hits.length) return null;
+      return { artist: hits[0].artist, tracks: hits[0].tracks || null, ...mergeEntries(hits) };
+    });
+  }
+
+  async function fleetCharts(r, progress) {
+    const trackFilters = [["artist", "e"], ["artist", "a"], ["artist", "i"], ["artist", "o"], ["artist", "u"], ["artist", "n"], ["title", "e"], ["title", "a"], ["title", "o"], ["title", "i"]];
+    const artistFilters = ["e", "a", "i", "o", "u", "n", "r"];
+    const tasks = [
+      ...trackFilters.map(([f, v]) => () => call("airplay", { [f]: v, from: r.from, to: r.to })),
+      ...artistFilters.map((v) => () => call("airplay", { artist: v, group_by: "artist", from: r.from, to: r.to })),
+      () => call("songs", { limit: 100 }),
+    ];
+    progress("Kandidaten sammeln", 0, 1);
+    const res = await pool(tasks, 6, (d, n) => progress("Kandidaten sammeln", d, n));
+    const tRows = new Map(), aRows = new Map();
+    const catalog = [];
+    res.forEach((p, i) => {
+      if (!p || p.__error) return;
+      if (i < trackFilters.length) {
+        for (const t of p.tracks || []) {
+          const k = key(t.artist, t.title);
+          const c = tRows.get(k) || { artist: t.artist, title: t.title, rows: new Map() };
+          for (const s of t.per_station || []) c.rows.set(s.stream_id, Math.max(c.rows.get(s.stream_id) || 0, s.plays));
+          tRows.set(k, c);
+        }
+      } else if (i < trackFilters.length + artistFilters.length) {
+        for (const t of p.tracks || []) {
+          const k = norm(t.artist);
+          const c = aRows.get(k) || { artist: t.artist, rows: new Map() };
+          for (const s of t.per_station || []) c.rows.set(s.stream_id, Math.max(c.rows.get(s.stream_id) || 0, s.plays));
+          aRows.set(k, c);
+        }
+      } else {
+        for (const s of p.songs || []) catalog.push(s);
+      }
+    });
+    const sum = (m) => { let x = 0; for (const v of m.values()) x += v; return x; };
+    const tCand = [...tRows.values()].map((c) => ({ artist: c.artist, title: c.title, score: sum(c.rows) })).sort((a, b) => b.score - a.score).slice(0, 40);
+    const seen = new Set(tCand.map((c) => key(c.artist, c.title)));
+    for (const s of catalog.sort((a, b) => (b.stations || 0) - (a.stations || 0))) {
+      if (tCand.length >= 65) break;
+      const k = key(s.artist, s.title);
+      if (!seen.has(k)) { seen.add(k); tCand.push({ artist: s.artist, title: s.title, score: 0 }); }
+    }
+    progress("Songs exakt zählen", 0, tCand.length);
+    const tracks = (await pool(tCand.map((c) => () => verifyTrack(c.artist, c.title, r)), 6, (d, n) => progress("Songs exakt zählen", d, n)))
+      .filter((x) => x && !x.__error);
+
+    const aScore = new Map();
+    for (const c of aRows.values()) aScore.set(norm(c.artist), { artist: c.artist, score: sum(c.rows) });
+    for (const t of tracks) {
+      const k = norm(t.artist), cur = aScore.get(k) || { artist: t.artist, score: 0 };
+      cur.score = Math.max(cur.score, t.plays); aScore.set(k, cur);
+    }
+    const aCand = [...aScore.values()].sort((a, b) => b.score - a.score).slice(0, 32);
+    progress("Interpreten exakt zählen", 0, aCand.length);
+    const artists = (await pool(aCand.map((c) => () => verifyArtist(c.artist, r)), 6, (d, n) => progress("Interpreten exakt zählen", d, n)))
+      .filter((x) => x && !x.__error);
+
+    const dedupe = (arr, kf) => { const m = new Map(); for (const x of arr) if (!m.has(kf(x))) m.set(kf(x), x); return [...m.values()]; };
+    return {
+      mode: "fleet",
+      songs: dedupe(tracks, (t) => key(t.artist, t.title)).sort((a, b) => b.plays - a.plays || b.stations - a.stations).slice(0, 20),
+      artists: dedupe(artists, (a) => norm(a.artist)).sort((a, b) => b.plays - a.plays || b.stations - a.stations).slice(0, 20),
+      candidates: tCand.length + aCand.length,
+    };
+  }
+
+  /* ---------- Exact counting (selected stations via timeline) ---------- */
+  function stationPlays(id, r) {
+    return memo(["s", id, r.from, r.to].join("|"), async () => {
+      const chunks = [];
+      for (let t = r.fromD.getTime(); t < r.toD.getTime(); t += 864e5) chunks.push([new Date(t), new Date(Math.min(t + 864e5, r.toD.getTime()))]);
+      const res = await pool(chunks.map(([a, b]) => () => call("timeline", { stream_id: id, from: iso(a), to: iso(b) })), 2);
+      const blocks = [];
+      for (const p of res) if (p && !p.__error) for (const b of p.blocks || []) if (b.type === "music" && b.meta && b.meta.artist) blocks.push(b);
+      blocks.sort((a, b) => (a.from < b.from ? -1 : 1));
+      const plays = [];
+      const lastByKey = new Map();
+      for (const b of blocks) {
+        const k = key(b.meta.artist, b.meta.title);
+        const prev = lastByKey.get(k);
+        const start = Date.parse(b.from), end = Date.parse(b.to);
+        if (prev && start - prev < 8 * 60e3) { lastByKey.set(k, end); continue; }
+        lastByKey.set(k, end);
+        plays.push({ stream_id: id, artist: b.meta.artist, title: b.meta.title, at: b.from });
+      }
+      return plays;
+    });
+  }
+  async function stationCharts(ids, r, progress) {
+    progress("Sendeabläufe lesen", 0, ids.length);
+    const res = await pool(ids.map((id) => () => stationPlays(id, r)), 2, (d, n) => progress("Sendeabläufe lesen", d, n));
+    const all = res.filter((x) => Array.isArray(x)).flat();
+    const name = (id) => (state.streams.find((s) => s.id === id) || {}).name || id;
+    const agg = (kf, mk) => {
+      const m = new Map();
+      for (const p of all) {
+        const k = kf(p);
+        const c = m.get(k) || mk(p);
+        c.plays++; c.ps.set(p.stream_id, (c.ps.get(p.stream_id) || 0) + 1);
+        if (!c.first || p.at < c.first) c.first = p.at;
+        if (!c.last || p.at > c.last) c.last = p.at;
+        if (c.titles) c.titles.add(norm(p.title));
+        m.set(k, c);
+      }
+      return [...m.values()].map((c) => ({ ...c, stations: c.ps.size, per_station: [...c.ps].map(([id, n]) => ({ stream_id: id, stream: name(id), plays: n })).sort((a, b) => b.plays - a.plays), tracks: c.titles ? c.titles.size : undefined }))
+        .sort((a, b) => b.plays - a.plays || b.stations - a.stations).slice(0, 20);
+    };
+    return {
+      mode: "stations",
+      plays: all,
+      songs: agg((p) => key(p.artist, p.title), (p) => ({ artist: p.artist, title: p.title, plays: 0, ps: new Map() })),
+      artists: agg((p) => norm(p.artist), (p) => ({ artist: p.artist, plays: 0, ps: new Map(), titles: new Set() })),
+    };
+  }
+
+  /* ---------- Status ---------- */
+  function setLamp(on) { $("lamp").classList.toggle("idle", !on); }
+  function progress(label, done, total) {
+    const s = $("status");
+    s.hidden = false; s.className = "status";
+    s.replaceChildren(
+      el("div", { class: "panel-head" }, el("span", { class: "label", text: label }), el("span", { class: "num hint", text: total > 1 ? done + " / " + total : "" })),
+      el("div", { class: "meter", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(total), "aria-valuenow": String(done) },
+        el("span", { style: "width:" + (total ? Math.round((done / total) * 100) : 5) + "%" })),
+    );
+  }
+  function showError(e, retry) {
+    const s = $("status");
+    s.hidden = false; s.className = "status err";
+    s.replaceChildren(el("strong", { text: "Daten nicht verfügbar" }), el("span", { text: errText(e) }),
+      retry ? el("div", {}, el("button", { class: "btn", type: "button", onclick: retry, text: "Erneut versuchen" })) : null);
+  }
+  function clearStatus() { $("status").hidden = true; }
+
+  /* ---------- Station picker ---------- */
+  function renderChips() {
+    const box = $("chips");
+    const kids = state.selected.map((id) => {
+      const s = state.streams.find((x) => x.id === id);
+      return el("span", { class: "chip" }, s ? s.name : id,
+        el("button", { type: "button", "aria-label": "Entfernen", onclick: (ev) => { ev.stopPropagation(); state.selected = state.selected.filter((x) => x !== id); renderChips(); renderList(); } }, "×"));
+    });
+    if (!state.selected.length) kids.push(el("span", { class: "chip all", text: "Alle Sender" }));
+    kids.push(el("button", { type: "button", class: "btn", id: "pick", onclick: togglePop, "aria-expanded": String(!$("pop").hidden) }, "Sender wählen"));
+    if (state.selected.length) kids.push(el("button", { type: "button", class: "btn", onclick: () => { state.selected = []; renderChips(); renderList(); }, text: "Alle Sender" }));
+    box.replaceChildren(...kids);
+  }
+  function togglePop() {
+    const p = $("pop"); p.hidden = !p.hidden; renderChips();
+    if (!p.hidden) { renderList(); $("q").focus(); }
+  }
+  function renderList() {
+    const q = norm($("q").value);
+    const items = state.streams.filter((s) => !q || norm(s.name).includes(q));
+    $("list").replaceChildren(...(items.length ? items.map((s) => {
+      const on = state.selected.includes(s.id);
+      const cb = el("input", { type: "checkbox", id: "st-" + s.id, checked: on, disabled: !on && state.selected.length >= MAX_STATIONS });
+      cb.addEventListener("change", () => {
+        if (cb.checked && state.selected.length < MAX_STATIONS) state.selected.push(s.id);
+        else state.selected = state.selected.filter((x) => x !== s.id);
+        renderChips(); renderList();
+      });
+      return el("label", { for: "st-" + s.id }, cb, s.name);
+    }) : [el("div", { class: "empty", text: state.streams.length ? "Kein Sender passt zur Suche." : "Senderliste wird geladen …" })]));
+    $("groups").replaceChildren(...state.groups.filter((g) => g.stream_count > 0).map((g) =>
+      el("button", { type: "button", onclick: () => selectGroup(g.id), text: g.name })));
+  }
+  async function selectGroup(gid) {
+    const ids = state.streams.filter((s) => (s.group_ids || []).includes(gid)).map((s) => s.id);
+    state.selected = ids.slice(0, MAX_STATIONS);
+    renderChips(); renderList();
+  }
+  document.addEventListener("click", (ev) => {
+    const p = $("pop");
+    if (!p.hidden && !ev.target.closest(".picker")) { p.hidden = true; renderChips(); }
+  });
+  $("q").addEventListener("input", renderList);
+
+  /* ---------- Rendering: charts ---------- */
+  function bar(value, max) { return el("div", { class: "track" }, el("span", { style: "width:" + Math.max(2, (value / (max || 1)) * 100) + "%" })); }
+  function chartRow(i, main, sub, value, max, stations, onclick) {
+    return el("button", { class: "row", type: "button", onclick },
+      el("span", { class: "rank", text: String(i + 1) }),
+      el("span", { class: "who" }, el("span", { class: "t", text: main }), sub ? el("span", { class: "a", text: sub }) : null, bar(value, max)),
+      el("span", { class: "fig" }, el("b", { text: nf.format(value) }), el("small", { text: stations === 1 ? "1 Sender" : nf.format(stations) + " Sender" })));
+  }
+  function scopeText() {
+    if (!state.selected.length) return "alle Sender";
+    const names = state.selected.map((id) => (state.streams.find((s) => s.id === id) || {}).name || id);
+    return names.join(", ");
+  }
+  function renderCharts() {
+    const c = state.charts;
+    const view = $("view");
+    if (!c) {
+      view.replaceChildren(el("section", { class: "panel" }, el("h2", { text: "Noch keine Charts geladen" }),
+        el("p", { class: "note", text: "Wähle Zeitraum und Sender und klicke auf „Charts laden“. Ohne Senderauswahl zählt der Monitor über alle Sender; das dauert etwa eine halbe Minute." })));
+      return;
+    }
+    const maxS = c.songs[0] ? c.songs[0].plays : 1, maxA = c.artists[0] ? c.artists[0].plays : 1;
+    const total = c.mode === "stations" ? c.plays.length : null;
+    const strip = el("div", { class: "strip" },
+      el("div", { class: "kv" }, el("span", { class: "label", text: "Zeitraum" }), el("b", { text: state.days === 1 ? "24 h" : "7 Tage" })),
+      el("div", { class: "kv" }, el("span", { class: "label", text: "Sender" }), el("b", { text: state.selected.length ? nf.format(state.selected.length) : "alle" })),
+      total != null ? el("div", { class: "kv" }, el("span", { class: "label", text: "Plays gesamt" }), el("b", { text: nf.format(total) })) : null,
+      el("div", { class: "kv" }, el("span", { class: "label", text: "Stand" }), el("b", { text: c.at ? dtf.format(c.at) : "–" })),
+    );
+    const songs = c.songs.length ? c.songs.map((t, i) => chartRow(i, t.title, t.artist, t.plays, maxS, t.stations, () => go({ name: "song", artist: t.artist, title: t.title })))
+      : [el("div", { class: "empty", text: "Keine Plays im Zeitraum." })];
+    const arts = c.artists.length ? c.artists.map((a, i) => chartRow(i, a.artist, a.tracks ? nf.format(a.tracks) + (a.tracks === 1 ? " Titel" : " Titel") : null, a.plays, maxA, a.stations, () => go({ name: "artist", artist: a.artist })))
+      : [el("div", { class: "empty", text: "Keine Plays im Zeitraum." })];
+    view.replaceChildren(el("div", { class: "wrap", style: "gap:16px" },
+      strip,
+      el("p", { class: "note", text: "Gezählt über " + scopeText() + ". " + (c.mode === "fleet" ? "Exakt nachgezählt aus " + nf.format(c.candidates) + " Kandidaten." : "Exakt aus dem Sendeablauf gezählt.") + " Klicke auf einen Eintrag für Details." }),
+      el("div", { class: "grid2" },
+        el("section", { class: "panel" }, el("div", { class: "panel-head" }, el("h2", { text: "Top 20 Songs" }), el("span", { class: "label", text: "Plays" })), el("div", { class: "rows" }, songs)),
+        el("section", { class: "panel" }, el("div", { class: "panel-head" }, el("h2", { text: "Top 20 Interpreten" }), el("span", { class: "label", text: "Plays" })), el("div", { class: "rows" }, arts)),
+      )));
+  }
+
+  /* ---------- Rendering: detail helpers ---------- */
+  function crumbs() {
+    const parts = [el("button", { type: "button", onclick: () => { state.nav = []; render(); }, text: "Charts" })];
+    state.nav.forEach((v, i) => {
+      parts.push(el("span", { class: "sep", text: "›" }));
+      const label = v.name === "song" ? v.title : v.name === "artist" ? v.artist : v.stream;
+      if (i === state.nav.length - 1) parts.push(el("span", { text: label }));
+      else parts.push(el("button", { type: "button", onclick: () => { state.nav = state.nav.slice(0, i + 1); render(); }, text: label }));
+    });
+    return el("nav", { class: "crumbs", "aria-label": "Pfad" }, parts);
+  }
+  function kpis(list) {
+    return el("div", { class: "kpis" }, list.map(([l, v]) => el("div", {}, el("span", { class: "label", text: l }), el("b", { text: v }))));
+  }
+  function niceMax(v) {
+    if (v <= 5) return 5;
+    const p = Math.pow(10, Math.floor(Math.log10(v)));
+    for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p;
+    return 10 * p;
+  }
+  function barChart(points, title) {
+    const W = 720, H = 240, L = 44, R = 12, T = 16, B = 40;
+    const max = niceMax(Math.max(1, ...points.map((p) => p.v)));
+    const iw = W - L - R, ih = H - T - B, bw = iw / points.length;
+    const ns = "http://www.w3.org/2000/svg";
+    const s = (tag, a) => { const n = document.createElementNS(ns, tag); for (const k in a) n.setAttribute(k, a[k]); return n; };
+    const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": title });
+    for (let i = 0; i <= 4; i++) {
+      const v = (max / 4) * i, y = T + ih - (v / max) * ih;
+      svg.append(s("line", { x1: L, x2: W - R, y1: y, y2: y, stroke: "var(--line)", "stroke-width": i === 0 ? 1.2 : 1 }));
+      const t = s("text", { x: L - 8, y: y + 4, "text-anchor": "end", fill: "var(--muted)", "font-size": 11, "font-family": "var(--font-data)" });
+      t.textContent = nf.format(Math.round(v)); svg.append(t);
+    }
+    const peak = Math.max(...points.map((p) => p.v));
+    points.forEach((p, i) => {
+      const h = (p.v / max) * ih, x = L + i * bw + bw * 0.18, w = bw * 0.64;
+      const r = s("rect", { x, y: T + ih - h, width: w, height: Math.max(h, p.v ? 1 : 0), rx: 2, fill: p.v === peak && peak > 0 ? "var(--onair)" : "var(--bar)" });
+      const tip = s("title", {}); tip.textContent = p.label + ": " + nf.format(p.v) + " Plays"; r.append(tip); svg.append(r);
+      const v = s("text", { x: x + w / 2, y: T + ih - h - 5, "text-anchor": "middle", fill: "var(--ink)", "font-size": 11, "font-family": "var(--font-data)" });
+      v.textContent = p.v ? nf.format(p.v) : ""; svg.append(v);
+      const lab = s("text", { x: x + w / 2, y: H - 14, "text-anchor": "middle", fill: "var(--muted)", "font-size": 11, "font-family": "var(--font-body)" });
+      lab.textContent = p.label; svg.append(lab);
+    });
+    return el("div", { class: "chartbox" }, svg);
+  }
+  function stationList(per, onPick) {
+    const max = per[0] ? per[0].plays : 1;
+    return el("div", { class: "rows" }, per.map((s, i) => el("button", { class: "row", type: "button", onclick: () => onPick(s) },
+      el("span", { class: "rank", text: String(i + 1) }),
+      el("span", { class: "who" }, el("span", { class: "t", text: s.stream }), bar(s.plays, max)),
+      el("span", { class: "fig" }, el("b", { text: nf.format(s.plays) }), el("small", { text: "Plays" })))));
+  }
+  function panel(title, ...kids) { return el("section", { class: "panel" }, el("h2", { text: title }), ...kids); }
+  function loadingPanel(t) { return el("section", { class: "panel" }, el("div", { class: "empty", text: t })); }
+  function errorPanel(e) { return el("section", { class: "panel" }, el("div", { class: "empty", text: errText(e) })); }
+  const openStation = (s) => go({ name: "station", stream_id: s.stream_id, stream: s.stream });
+
+  /* ---------- Song detail ---------- */
+  async function renderSong(v, run) {
+    const r = range();
+    const view = $("view");
+    const head = el("div", { class: "hero" }, el("span", { class: "label", text: "Song" }), el("h2", { text: v.title }),
+      el("div", { class: "by" }, el("button", { type: "button", onclick: () => go({ name: "artist", artist: v.artist }), text: v.artist })));
+    const kpiBox = el("div", {}, loadingPanel("Plays werden gezählt …"));
+    const trend = loadingPanel("Verlauf wird geladen …");
+    const stations = loadingPanel("Senderverteilung wird geladen …");
+    const facts = loadingPanel("Katalogdaten werden geladen …");
+    view.replaceChildren(el("div", { class: "wrap", style: "gap:16px" }, crumbs(), head, kpiBox, el("div", { class: "grid2" }, trend, stations), facts));
+    const alive = () => run === state.runId;
+
+    verifyTrack(v.artist, v.title, r).then((t) => {
+      if (!alive()) return;
+      if (!t) { kpiBox.replaceChildren(el("section", { class: "panel" }, el("div", { class: "empty", text: "Im Zeitraum wurde dieser Titel auf keinem Sender angekündigt." }))); stations.replaceChildren(); return; }
+      kpiBox.replaceChildren(kpis([
+        ["Plays (" + (state.days === 1 ? "24 h" : "7 Tage") + ", alle Sender)", nf.format(t.plays)],
+        ["Sender", nf.format(t.stations)],
+        ["Ø Plays je Sender", (t.plays / Math.max(1, t.stations)).toLocaleString("de-DE", { maximumFractionDigits: 1 })],
+        ["Erster Play", fmtDT(t.first)],
+        ["Letzter Play", fmtDT(t.last)],
+      ]));
+      const sel = new Set(state.selected);
+      const per = sel.size ? [...t.per_station.filter((s) => sel.has(s.stream_id)), ...t.per_station.filter((s) => !sel.has(s.stream_id))] : t.per_station;
+      stations.replaceChildren(el("div", { class: "panel-head" }, el("h2", { text: "Plays je Sender" }), el("span", { class: "label", text: nf.format(t.stations) + " Sender" })),
+        stationList(per, openStation),
+        t.spellings && t.spellings.length > 1 ? el("p", { class: "note", text: "Zusammengefasste Schreibweisen: " + t.spellings.join(" · ") }) : null);
+    }).catch((e) => alive() && kpiBox.replaceChildren(errorPanel(e)));
+
+    const bs = buckets(r);
+    pool(bs.map((b) => () => verifyTrack(v.artist, v.title, { from: b.from, to: b.to })), 4).then((res) => {
+      if (!alive()) return;
+      const pts = bs.map((b, i) => ({ label: b.label, v: res[i] && !res[i].__error && res[i] ? res[i].plays : 0 }));
+      trend.replaceChildren(el("div", { class: "panel-head" }, el("h2", { text: state.days === 1 ? "Plays je 4 Stunden" : "Plays je Tag" }), el("span", { class: "label", text: "alle Sender" })),
+        barChart(pts, "Plays im Zeitverlauf"));
+    }).catch((e) => alive() && trend.replaceChildren(errorPanel(e)));
+
+    memo("c|" + key(v.artist, v.title), () => call("songs", { artist: v.artist, title: v.title, limit: 10 })).then((p) => {
+      if (!alive()) return;
+      const list = (p && p.songs) || [];
+      const s = list.find((x) => norm(x.artist) === norm(v.artist) && norm(x.title) === norm(v.title)) || list.find((x) => norm(x.title) === norm(v.title));
+      if (!s) { facts.replaceChildren(el("h2", { text: "Katalog" }), el("div", { class: "empty", text: "Für diesen Titel gibt es noch keinen Eintrag im Musikkatalog." })); return; }
+      const f = [];
+      const add = (l, val) => val != null && val !== "" && f.push(el("div", {}, el("span", { class: "label", text: l }), el("span", {}, val)));
+      add("Erscheinungsjahr", s.first_release_year);
+      add("Länge", s.length_secs ? Math.floor(s.length_secs / 60) + ":" + String(Math.round(s.length_secs % 60)).padStart(2, "0") + " min" : null);
+      add("Tempo", s.bpm ? Math.round(s.bpm) + " BPM" : null);
+      add("Tonart", s.musical_key != null && s.musical_key >= 0 ? KEYS[s.musical_key] + (s.musical_mode === 1 ? "-Dur" : "-Moll") : null);
+      add("Lautheit", s.loudness_db != null ? s.loudness_db.toLocaleString("de-DE", { maximumFractionDigits: 1 }) + " dB" : null);
+      add("ISRC", s.isrcs && s.isrcs.length ? s.isrcs.slice(0, 3).join(", ") + (s.isrcs.length > 3 ? " (+" + (s.isrcs.length - 3) + ")" : "") : null);
+      add("Erkannt auf", s.stations ? nf.format(s.stations) + " Sendern" + (s.disputes ? ", " + s.disputes + " Widersprüche" : "") : null);
+      if (s.spotify_track_id) f.push(el("div", {}, el("span", { class: "label", text: "Spotify" }), el("a", { href: "https://open.spotify.com/track/" + encodeURIComponent(s.spotify_track_id), target: "_blank", rel: "noopener", text: "Titel öffnen" })));
+      const feats = [["Tanzbarkeit", s.danceability], ["Energie", s.energy], ["Stimmung", s.valence], ["Akustisch", s.acousticness]].filter(([, x]) => x != null);
+      facts.replaceChildren(el("h2", { text: "Katalog" }), el("div", { class: "facts" }, f),
+        s.genres && s.genres.length ? el("div", { class: "tags" }, s.genres.slice(0, 8).map((g) => el("span", { class: "tag", text: g }))) : null,
+        feats.length ? el("div", { class: "rows", style: "gap:6px;max-width:520px" }, feats.map(([l, x]) => el("div", { class: "feat" }, el("span", { text: l }), bar(x, 1), el("span", { class: "num", text: Math.round(x * 100) + " %" })))) : null);
+    }).catch((e) => alive() && facts.replaceChildren(errorPanel(e)));
+  }
+
+  /* ---------- Artist detail ---------- */
+  async function renderArtist(v, run) {
+    const r = range();
+    const view = $("view");
+    const kpiBox = el("div", {}, loadingPanel("Plays werden gezählt …"));
+    const songs = loadingPanel("Titel werden gezählt …");
+    const stations = loadingPanel("Senderverteilung wird geladen …");
+    view.replaceChildren(el("div", { class: "wrap", style: "gap:16px" }, crumbs(),
+      el("div", { class: "hero" }, el("span", { class: "label", text: "Interpret" }), el("h2", { text: v.artist })),
+      kpiBox, el("div", { class: "grid2" }, songs, stations)));
+    const alive = () => run === state.runId;
+    verifyArtist(v.artist, r).then((a) => {
+      if (!alive()) return;
+      if (!a) { kpiBox.replaceChildren(el("section", { class: "panel" }, el("div", { class: "empty", text: "Im Zeitraum wurde dieser Interpret auf keinem Sender angekündigt." }))); stations.replaceChildren(); return; }
+      kpiBox.replaceChildren(kpis([
+        ["Plays (" + (state.days === 1 ? "24 h" : "7 Tage") + ", alle Sender)", nf.format(a.plays)],
+        ["Sender", nf.format(a.stations)],
+        ["Verschiedene Titel", a.tracks != null ? nf.format(a.tracks) : "–"],
+        ["Letzter Play", fmtDT(a.last)],
+      ]));
+      stations.replaceChildren(el("div", { class: "panel-head" }, el("h2", { text: "Plays je Sender" }), el("span", { class: "label", text: nf.format(a.stations) + " Sender" })), stationList(a.per_station, openStation));
+    }).catch((e) => alive() && kpiBox.replaceChildren(errorPanel(e)));
+
+    memo("at|" + norm(v.artist) + "|" + r.from, () => call("airplay", { artist: v.artist, from: r.from, to: r.to })).then(async (p) => {
+      const titles = [];
+      const seen = new Set();
+      for (const t of (p && p.tracks) || []) {
+        if (norm(t.artist) !== norm(v.artist)) continue;
+        const k = norm(t.title);
+        if (!seen.has(k)) { seen.add(k); titles.push(t.title); }
+      }
+      const res = (await pool(titles.slice(0, 20).map((t) => () => verifyTrack(v.artist, t, r)), 5)).filter((x) => x && !x.__error).sort((a, b) => b.plays - a.plays);
+      if (!alive()) return;
+      const max = res[0] ? res[0].plays : 1;
+      songs.replaceChildren(el("div", { class: "panel-head" }, el("h2", { text: "Titel" }), el("span", { class: "label", text: "Plays" })),
+        res.length ? el("div", { class: "rows" }, res.map((t, i) => chartRow(i, t.title, null, t.plays, max, t.stations, () => go({ name: "song", artist: t.artist, title: t.title }))))
+          : el("div", { class: "empty", text: "Keine Titel im Zeitraum." }));
+    }).catch((e) => alive() && songs.replaceChildren(errorPanel(e)));
+  }
+
+  /* ---------- Station detail ---------- */
+  async function renderStation(v, run) {
+    const r = range();
+    const view = $("view");
+    const body = loadingPanel("Sendeablauf wird gelesen …");
+    view.replaceChildren(el("div", { class: "wrap", style: "gap:16px" }, crumbs(),
+      el("div", { class: "hero" }, el("span", { class: "label", text: "Sender" }), el("h2", { text: v.stream })), body));
+    const alive = () => run === state.runId;
+    try {
+      const c = await stationCharts([v.stream_id], r, () => {});
+      if (!alive()) return;
+      const plays = c.plays;
+      const bs = buckets(r);
+      const pts = bs.map((b) => ({ label: b.label, v: plays.filter((p) => p.at >= b.from && p.at < b.to).length }));
+      const maxS = c.songs[0] ? c.songs[0].plays : 1, maxA = c.artists[0] ? c.artists[0].plays : 1;
+      body.replaceWith(el("div", { class: "wrap", style: "gap:16px" },
+        kpis([["Musik-Plays", nf.format(plays.length)], ["Verschiedene Titel", nf.format(new Set(plays.map((p) => key(p.artist, p.title))).size)], ["Verschiedene Interpreten", nf.format(new Set(plays.map((p) => norm(p.artist))).size)]]),
+        panel(state.days === 1 ? "Musik-Plays je 4 Stunden" : "Musik-Plays je Tag", barChart(pts, "Plays im Zeitverlauf")),
+        el("div", { class: "grid2" },
+          el("section", { class: "panel" }, el("div", { class: "panel-head" }, el("h2", { text: "Top 20 Songs" }), el("span", { class: "label", text: "Plays" })),
+            el("div", { class: "rows" }, c.songs.length ? c.songs.map((t, i) => chartRow(i, t.title, t.artist, t.plays, maxS, 1, () => go({ name: "song", artist: t.artist, title: t.title }))) : el("div", { class: "empty", text: "Keine Musik-Plays mit Titelangabe im Zeitraum." }))),
+          el("section", { class: "panel" }, el("div", { class: "panel-head" }, el("h2", { text: "Top 20 Interpreten" }), el("span", { class: "label", text: "Plays" })),
+            el("div", { class: "rows" }, c.artists.length ? c.artists.map((a, i) => chartRow(i, a.artist, nf.format(a.tracks) + " Titel", a.plays, maxA, 1, () => go({ name: "artist", artist: a.artist }))) : el("div", { class: "empty", text: "Keine Plays." }))))));
+    } catch (e) { if (alive()) body.replaceWith(errorPanel(e)); }
+  }
+
+  /* ---------- Navigation ---------- */
+  function go(v) { state.nav.push(v); render(); window.scrollTo(0, 0); }
+  function render() {
+    const run = ++state.runId;
+    const v = state.nav[state.nav.length - 1];
+    if (!v) return renderCharts();
+    if (v.name === "song") return renderSong(v, run);
+    if (v.name === "artist") return renderArtist(v, run);
+    if (v.name === "station") return renderStation(v, run);
+  }
+
+  async function loadCharts() {
+    if (!mcp) { showError({ code: "not_granted" }); return; }
+    const btn = $("run");
+    btn.disabled = true; setLamp(true);
+    state.nav = []; state.runId++;
+    const r = range();
+    try {
+      const c = state.selected.length ? await stationCharts(state.selected.slice(), r, progress) : await fleetCharts(r, progress);
+      c.at = r.toD;
+      state.charts = c;
+      clearStatus();
+      render();
+    } catch (e) {
+      showError(e, loadCharts);
+    } finally { btn.disabled = false; setLamp(false); }
+  }
+
+  /* ---------- Wire up ---------- */
+  function setDays(d) {
+    state.days = d;
+    $("d1").setAttribute("aria-pressed", String(d === 1));
+    $("d7").setAttribute("aria-pressed", String(d === 7));
+  }
+  $("d1").addEventListener("click", () => setDays(1));
+  $("d7").addEventListener("click", () => setDays(7));
+  $("run").addEventListener("click", loadCharts);
+  renderChips();
+  renderCharts();
+
+  (async () => {
+    const use = window.claude && window.claude.use ? window.claude.use("mcp") : Promise.resolve(null);
+    mcp = await use.catch(() => null);
+    if (!mcp) {
+      showError({ code: "not_granted" });
+      $("run").disabled = true;
+      return;
+    }
+    try {
+      const [st, gr] = await Promise.all([call("streams", {}), call("groups", {})]);
+      state.streams = ((st && st.items) || []).filter((s) => s.enabled !== false).sort((a, b) => a.name.localeCompare(b.name, "de"));
+      state.groups = (gr && gr.items) || [];
+      $("source").textContent = "Airplay-Charts aus den Titelangaben (ICY) von " + nf.format(state.streams.length) + " überwachten Radiostreams im aireal Ad Fingerprinting.";
+      renderList();
+      loadCharts();
+    } catch (e) {
+      showError(e, () => location.reload());
+    }
+  })();
+})();
+</script>
