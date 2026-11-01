@@ -185,8 +185,8 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
       <summary>Zählweise</summary>
       <ul>
         <li>Ein Play ist ein Titel, den der Sender selbst in seinen Metadaten (ICY) ankündigt. Sender ohne verwertbare Titelangaben fehlen in der Zählung.</li>
-        <li><b>Alle Sender:</b> Die Schnittstelle liefert bei breiten Abfragen höchstens 200 Zeilen. Der Monitor sammelt deshalb zuerst Kandidaten aus mehreren Teilabfragen und dem Musikkatalog und zählt jeden Kandidaten danach einzeln exakt nach. Die angezeigten Zahlen sind exakt; ein Titel mit gleichmäßig schwacher Rotation auf sehr vielen Sendern kann als Kandidat fehlen.</li>
-        <li><b>Senderauswahl:</b> Der Monitor liest den Sendeablauf jedes gewählten Senders und zählt jeden Musikblock. Ein Titel, dessen Musikblock nur durch einen kurzen Wortbeitrag unterbrochen ist (unter 75 Sekunden), gilt als ein Play.</li>
+        <li><b>Alle Sender:</b> Die Schnittstelle liefert bei breiten Abfragen höchstens 200 Zeilen. Der Monitor sammelt deshalb zuerst Kandidaten aus mehreren Teilabfragen und dem Musikkatalog und zählt jeden Kandidaten danach einzeln exakt nach. Weil ein Song nie mehr Plays hat als sein Interpret, werden zusätzlich alle Titel jedes Interpreten gezählt, der mindestens so viele Plays hat wie der 20. Song. Die angezeigten Zahlen sind exakt.</li>
+        <li><b>Senderauswahl:</b> Der Monitor liest den Sendeablauf jedes gewählten Senders und zählt jeden Musikblock. Ein Titel, dessen Musikblock nur durch einen kurzen Wortbeitrag unterbrochen ist (unter 75 Sekunden), gilt als ein Play. Ein angekündigter Titel, den Wortbeitrag oder Werbung vollständig überdecken, zählt ebenfalls, wie in der Airplay-Zählung des Services. Plays zählen in dem Zeitfenster, in dem sie beginnen.</li>
         <li>Regionale Fenster eines Programms (Antenne 1, radio SAW, hr1, Antenne Thüringen) zählen als eigene Sender.</li>
       </ul>
     </details>
@@ -418,11 +418,39 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
       .filter((x) => x && !x.__error);
 
     const dedupe = (arr, kf) => { const m = new Map(); for (const x of arr) if (!m.has(kf(x))) m.set(kf(x), x); return [...m.values()]; };
+
+    // Second pass: a song's plays never exceed its artist's plays. Every artist at or above the
+    // current 20th-place song may hold a song that belongs in the Top 20, so all their titles are counted.
+    const ranked = dedupe(tracks, (t) => key(t.artist, t.title)).sort((a, b) => b.plays - a.plays);
+    const floor = ranked.length >= 20 ? ranked[19].plays : 0;
+    const known = new Set(ranked.map((t) => key(t.artist, t.title)));
+    const big = dedupe(artists, (a) => norm(a.artist)).filter((a) => a.plays >= floor).sort((a, b) => b.plays - a.plays).slice(0, 25);
+    progress("Titel der Interpreten prüfen", 0, big.length);
+    // Two title sources per artist: its airplay rows (capped at 200) and its catalog entries (not capped by airplay).
+    const lists = await pool(big.flatMap((a) => [
+      () => call("airplay", { artist: a.artist, from: r.from, to: r.to }),
+      () => call("songs", { artist: a.artist, limit: 100 }),
+    ]), 6, (d, n) => progress("Titel der Interpreten prüfen", d, n));
+    const extra = [];
+    lists.forEach((p, j) => {
+      if (!p || p.__error) return;
+      const who = big[Math.floor(j / 2)];
+      for (const t of p.tracks || p.songs || []) {
+        if (norm(t.artist) !== norm(who.artist)) continue;
+        const k = key(t.artist, t.title);
+        if (!known.has(k)) { known.add(k); extra.push({ artist: t.artist, title: t.title }); }
+      }
+    });
+    const extraChecked = extra.slice(0, 160);
+    progress("Weitere Songs exakt zählen", 0, extraChecked.length);
+    const more = (await pool(extraChecked.map((c) => () => verifyTrack(c.artist, c.title, r)), 6, (d, n) => progress("Weitere Songs exakt zählen", d, n)))
+      .filter((x) => x && !x.__error);
+    tracks.push(...more);
     return {
       mode: "fleet",
-      songs: dedupe(tracks, (t) => key(t.artist, t.title)).sort((a, b) => b.plays - a.plays || b.stations - a.stations).slice(0, 20),
+      songs: dedupe(tracks, (t) => key(t.artist, t.title)).sort((a, b) => b.plays - a.plays || b.stations - a.stations || a.title.localeCompare(b.title, "de") || a.artist.localeCompare(b.artist, "de")).slice(0, 20),
       artists: dedupe(artists, (a) => norm(a.artist)).sort((a, b) => b.plays - a.plays || b.stations - a.stations).slice(0, 20),
-      candidates: tCand.length + aCand.length,
+      candidates: tCand.length + aCand.length + extraChecked.length,
     };
   }
 
@@ -432,18 +460,48 @@ details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85
       const chunks = [];
       for (let t = r.fromD.getTime(); t < r.toD.getTime(); t += 864e5) chunks.push([new Date(t), new Date(Math.min(t + 864e5, r.toD.getTime()))]);
       const res = await pool(chunks.map(([a, b]) => () => call("timeline", { stream_id: id, from: iso(a), to: iso(b) })), 2);
+      // A timeline also returns blocks that merely overlap its window; a play counts in the window it starts in.
+      const lo = r.fromD.getTime(), hi = r.toD.getTime();
       const blocks = [];
-      for (const p of res) if (p && !p.__error) for (const b of p.blocks || []) if (b.type === "music" && b.meta && b.meta.artist) blocks.push(b);
+      const seenBlock = new Set();
+      for (const p of res) if (p && !p.__error) for (const b of p.blocks || []) {
+        if (b.type !== "music" && b.type !== "uncertain") continue;
+        const id = b.type + "|" + b.from;
+        if (seenBlock.has(id)) continue;
+        seenBlock.add(id); blocks.push(b);
+      }
       blocks.sort((a, b) => (a.from < b.from ? -1 : 1));
+      // Raw ICY title -> canonical artist/title, learned from the music blocks.
+      const canon = new Map();
+      for (const b of blocks) if (b.type === "music" && b.meta && b.meta.artist && b.meta.raw_title) canon.set(norm(b.meta.raw_title), { artist: b.meta.artist, title: b.meta.title });
       const plays = [];
       const lastByKey = new Map();
+      let lastRaw = null;
       for (const b of blocks) {
-        const k = key(b.meta.artist, b.meta.title);
+        let artist, title;
+        if (b.type === "music") {
+          if (!b.meta || !b.meta.artist) continue;
+          artist = b.meta.artist; title = b.meta.title;
+          lastRaw = norm(b.meta.raw_title || artist + " - " + title);
+        } else {
+          // "uncertain" = the station's title is stale. It is a play only when the station announced a NEW
+          // title that speech or ads then covered completely; a title left over from the previous song is not.
+          const st = b.meta && b.meta.stale_title;
+          if (!st) continue;
+          const raw = norm(st);
+          if (raw === lastRaw) continue;
+          lastRaw = raw;
+          const c = canon.get(raw);
+          if (!c) continue;
+          artist = c.artist; title = c.title;
+        }
+        const k = key(artist, title);
+        const t0 = Date.parse(b.from), t1 = Date.parse(b.to);
         const prev = lastByKey.get(k);
-        const start = Date.parse(b.from), end = Date.parse(b.to);
-        if (prev && start - prev < 75e3) { lastByKey.set(k, end); continue; }
-        lastByKey.set(k, end);
-        plays.push({ stream_id: id, artist: b.meta.artist, title: b.meta.title, at: b.from });
+        lastByKey.set(k, t1);
+        if (prev && t0 - prev < 75e3) continue;
+        if (t0 < lo || t0 >= hi) continue;
+        plays.push({ stream_id: id, artist, title, at: b.from });
       }
       return plays;
     });

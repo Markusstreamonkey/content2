@@ -1,0 +1,896 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"></head><body><title>MAS Airplay Monitor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap">
+<style>
+/* Layout (MAS Partners, Dashboard-Modus C6): dunkle Kopfleiste mit Wortmarke, darunter helle Inhaltsflaeche im Kartenraster; Drill-down ersetzt das Raster, Pfad darueber. */
+:root {
+  --mas-dark: #0D0D0D; --mas-dark-card: #141414;
+  --surface: #FFFFFF; --surface-card: #F9F9F7; --surface-card-2: #EEEEEA;
+  --text-primary: #0D0D0D; --text-secondary: #74745F; --text-on-dark: #FFFFFF; --text-on-dark-2: #D4D5CB;
+  --rule: #D4D5CB; --rule-dark: #404032;
+  --lime: #BBC000; --lime-line: #777700; --lime-contour: #3F4100;
+  --leinen-3: #D4D5CB; --leinen-4: #A5A694;
+  --risk: #A6281D; --risk-soft: #F9F9F7;
+  --font-web: "Inter", -apple-system, "Segoe UI", Arial, sans-serif;
+  --type-titel: 28px; --type-h2: 20px; --type-value: 34px; --type-body: 15px; --type-kicker: 11px;
+  --track-caps: 0.075em;
+  color-scheme: light;
+}
+[hidden] { display: none !important; }
+* { box-sizing: border-box; border-radius: 0; }
+body { background: var(--surface); color: var(--text-primary); font-family: var(--font-web); font-size: var(--type-body); line-height: 1.45;
+  font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; margin: 0; }
+.band { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.inner { max-width: 1180px; margin: 0 auto; }
+.wrap { display: grid; gap: 24px; }
+h1, h2, h3 { margin: 0; font-weight: 700; text-wrap: balance; line-height: 1.18; }
+h1 { font-size: var(--type-h2); }
+h2 { font-size: var(--type-h2); }
+.label, .kicker { font-size: var(--type-kicker); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--text-secondary); font-weight: 400; }
+.kicker { color: var(--lime-contour); font-weight: 700; }
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; transition: color 120ms linear, background-color 120ms linear; }
+:focus-visible { outline: 1px solid var(--lime-line); outline-offset: 2px; }
+a { color: var(--lime-line); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+a:hover { color: var(--text-primary); }
+
+/* Kopfleiste (dunkle Flaeche) */
+.head { background: var(--mas-dark); color: var(--text-on-dark); padding-block: 18px 22px; }
+.head .inner { display: grid; gap: 18px; }
+.headrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; }
+.brand { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.brand img { height: 40px; width: auto; display: block; }
+.brand .sep { width: 1px; height: 32px; background: var(--rule-dark); }
+.brand h1 { color: var(--text-on-dark); font-size: var(--type-h2); }
+.head .label { color: var(--text-on-dark-2); }
+.sub { color: var(--text-on-dark-2); font-size: 13px; max-width: 70ch; margin: 0; }
+.live { font-size: var(--type-kicker); text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--text-on-dark-2); display: inline-flex; gap: 8px; align-items: center; }
+.live i { width: 7px; height: 7px; background: var(--leinen-4); display: inline-block; }
+.live.on i { background: var(--lime); }
+
+/* Filter */
+.controls { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: end; border-top: 1px solid var(--rule-dark); padding-top: 16px; }
+.field { display: grid; gap: 6px; min-width: 0; }
+.seg { display: inline-flex; border: 1px solid var(--rule-dark); }
+.seg button { background: transparent; border: 0; padding: 7px 14px; color: var(--text-on-dark); }
+.seg button + button { border-left: 1px solid var(--rule-dark); }
+.seg button:hover { background: var(--mas-dark-card); }
+.seg button[aria-pressed="true"] { background: var(--lime); color: var(--mas-dark); }
+.btn { border: 1px solid var(--rule-dark); background: transparent; color: var(--text-on-dark); padding: 7px 14px; }
+.btn:hover { background: var(--mas-dark-card); }
+.btn.primary { background: var(--text-on-dark); border-color: var(--text-on-dark); color: var(--mas-dark); font-weight: 700; }
+.btn.primary:hover { background: var(--text-on-dark-2); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.picker { position: relative; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 36px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; background: var(--mas-dark-card); border: 1px solid var(--rule-dark); padding: 3px 4px 3px 10px; font-size: 13px; color: var(--text-on-dark); }
+.chip button { border: 0; background: transparent; width: 22px; height: 22px; line-height: 1; color: var(--text-on-dark-2); }
+.chip button:hover { color: var(--text-on-dark); }
+.chip.all { padding-right: 10px; color: var(--text-on-dark-2); }
+.pop { position: absolute; z-index: 5; top: calc(100% + 6px); left: 0; width: min(420px, calc(100vw - 32px));
+  background: var(--surface); color: var(--text-primary); border: 1px solid var(--rule); padding: 12px; display: grid; gap: 10px; }
+.pop input[type=search] { width: 100%; padding: 7px 10px; border: 1px solid var(--rule); background: var(--surface-card); }
+.pop .list { max-height: 300px; overflow-y: auto; display: grid; border-top: 1px solid var(--rule); }
+.pop label { display: flex; gap: 8px; align-items: center; padding: 6px 4px; cursor: pointer; border-bottom: 1px solid var(--surface-card-2); }
+.pop label:hover { background: var(--surface-card); }
+.pop input[type=checkbox] { accent-color: var(--lime-line); }
+.pop .groups { display: flex; flex-wrap: wrap; gap: 6px; }
+.pop .groups button { font-size: 12px; border: 1px solid var(--rule); background: var(--surface-card); padding: 3px 9px; }
+.pop .groups button:hover { background: var(--surface-card-2); }
+.hint { font-size: 12px; color: var(--text-secondary); }
+
+/* Inhaltsflaeche */
+.content { padding-block: 28px 48px; }
+.status { display: grid; gap: 8px; background: var(--surface-card); padding: 14px 16px; }
+.status.err { border-left: 0; }
+.status .dot { display: inline-flex; gap: 8px; align-items: center; font-weight: 700; }
+.status .dot i { width: 7px; height: 7px; background: var(--risk); display: inline-block; }
+.meter { height: 4px; background: var(--surface-card-2); overflow: hidden; }
+.meter > span { display: block; height: 100%; background: var(--lime-line); width: 0; transition: width 120ms linear; }
+.strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.strip .kv { display: grid; gap: 4px; background: var(--surface); padding: 12px 14px; }
+.strip .kv b { font-size: 24px; font-weight: 400; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 32px; }
+.panel { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; padding-bottom: 8px; border-bottom: 1px solid var(--rule); }
+.rows { display: grid; }
+.row { display: grid; grid-template-columns: 2.2em minmax(0, 1fr) auto; gap: 4px 12px; align-items: center;
+  padding: 9px 4px; border: 0; border-bottom: 1px solid var(--surface-card-2); background: transparent; text-align: left; width: 100%; }
+.row:hover { background: var(--surface-card); }
+.rank { font-size: 13px; color: var(--text-secondary); text-align: right; }
+.who { min-width: 0; display: grid; gap: 4px; }
+.who .t { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row:hover .who .t { color: var(--lime-line); }
+.who .a { color: var(--text-secondary); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.track { height: 8px; background: transparent; }
+.track > span { display: block; height: 100%; background: var(--leinen-3); }
+.row.emph .track > span { background: var(--lime); outline: 1px solid var(--lime-contour); outline-offset: -1px; }
+.fig { text-align: right; display: grid; gap: 1px; }
+.fig b { font-weight: 400; font-size: 15px; }
+.fig small { color: var(--text-secondary); font-size: 11px; white-space: nowrap; text-transform: uppercase; letter-spacing: var(--track-caps); }
+.crumbs { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
+.crumbs button { border: 0; background: none; color: var(--lime-line); padding: 0; text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+.crumbs button:hover { color: var(--text-primary); }
+.crumbs span.sep { color: var(--text-secondary); }
+.hero { display: grid; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--rule); }
+.hero h2 { font-size: var(--type-titel); }
+.hero .by button { border: 0; background: none; padding: 0; color: var(--lime-line); font-size: 18px; text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.kpis > div { background: var(--surface); padding: 12px 14px; display: grid; gap: 4px; align-content: start; }
+.kpis b { font-size: 24px; font-weight: 400; }
+.kpis > div:first-child b { font-size: var(--type-value); color: var(--lime-line); }
+.chartbox { overflow-x: auto; }
+.chartbox svg { display: block; width: 100%; min-width: 420px; height: auto; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px 24px; }
+.facts > div { display: grid; gap: 2px; min-width: 0; }
+.facts span:last-child { overflow-wrap: anywhere; }
+.feat { display: grid; grid-template-columns: 8.5em minmax(0,1fr) 3em; gap: 8px; align-items: center; font-size: 13px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font-size: 11px; text-transform: uppercase; letter-spacing: var(--track-caps); background: var(--surface-card-2); padding: 2px 8px; color: var(--text-secondary); }
+.note { font-size: 13px; color: var(--text-secondary); max-width: 80ch; margin: 0; }
+details.method { background: var(--surface-card); padding: 14px 16px; }
+details.method summary { cursor: pointer; font-size: var(--type-kicker); text-transform: uppercase; letter-spacing: var(--track-caps); font-weight: 700; }
+details.method li { font-size: 13px; color: var(--text-secondary); max-width: 85ch; }
+.empty { color: var(--text-secondary); padding: 16px 4px; }
+.foot { border-top: 1px solid var(--rule); padding-top: 12px; font-size: 11px; text-transform: uppercase; letter-spacing: var(--track-caps); color: var(--text-secondary); }
+@media (prefers-reduced-motion: reduce) { button, .meter > span { transition: none; } }
+</style>
+
+<header class="head band">
+  <div class="inner">
+    <div class="headrow">
+      <div class="brand">
+        <img alt="MAS Partners · data driven decisions" src="data:image/png;base64,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">
+        <span class="sep" aria-hidden="true"></span>
+        <div>
+          <span class="label">Airplay-Analyse</span>
+          <h1>Airplay Monitor</h1>
+        </div>
+      </div>
+      <span class="live" id="lamp"><i></i>Live-Daten</span>
+    </div>
+    <p class="sub" id="source">Airplay-Charts aus den Titelangaben (ICY) der überwachten Radiostreams im aireal Ad Fingerprinting.</p>
+    <section class="controls" aria-label="Filter">
+      <div class="field">
+        <span class="label">Zeitraum</span>
+        <div class="seg" role="group" aria-label="Zeitraum">
+          <button type="button" id="d1" aria-pressed="false">24 Stunden</button>
+          <button type="button" id="d7" aria-pressed="true">7 Tage</button>
+        </div>
+      </div>
+      <div class="field picker" style="flex:1 1 320px">
+        <span class="label">Sender</span>
+        <div class="chips" id="chips"></div>
+        <div class="pop" id="pop" hidden>
+          <input type="search" id="q" placeholder="Sender suchen" autocomplete="off" aria-label="Sender suchen">
+          <div class="groups" id="groups"></div>
+          <div class="list" id="list"></div>
+          <div class="hint">Bis zu 5 Sender. Ohne Auswahl zählt der Monitor ueber alle Sender.</div>
+        </div>
+      </div>
+      <div class="field">
+        <button type="button" class="btn primary" id="run">Charts laden</button>
+      </div>
+    </section>
+  </div>
+</header>
+
+<div class="content band">
+  <div class="inner wrap">
+    <section id="status" class="status" hidden></section>
+    <main id="view"></main>
+    <details class="method">
+      <summary>Zählweise</summary>
+      <ul>
+        <li>Ein Play ist ein Titel, den der Sender selbst in seinen Metadaten (ICY) ankündigt. Sender ohne verwertbare Titelangaben fehlen in der Zählung.</li>
+        <li><b>Alle Sender:</b> Die Schnittstelle liefert bei breiten Abfragen höchstens 200 Zeilen. Der Monitor sammelt deshalb zuerst Kandidaten aus mehreren Teilabfragen und dem Musikkatalog und zählt jeden Kandidaten danach einzeln exakt nach. Weil ein Song nie mehr Plays hat als sein Interpret, werden zusätzlich alle Titel jedes Interpreten gezählt, der mindestens so viele Plays hat wie der 20. Song. Die angezeigten Zahlen sind exakt.</li>
+        <li><b>Senderauswahl:</b> Der Monitor liest den Sendeablauf jedes gewählten Senders und zählt jeden Musikblock. Ein Titel, dessen Musikblock nur durch einen kurzen Wortbeitrag unterbrochen ist (unter 75 Sekunden), gilt als ein Play.</li>
+        <li>Regionale Fenster eines Programms (Antenne 1, radio SAW, hr1, Antenne Thüringen) zählen als eigene Sender.</li>
+      </ul>
+    </details>
+    <div class="foot" id="foot">MAS Partners · Airplay Monitor · Quelle aireal Ad Fingerprinting</div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const SERVER = "aireal Live Platform MCP";
+  const TOOL = {
+    airplay: "ad-fingerprinting_song_airplay",
+    songs: "ad-fingerprinting_search_songs",
+    timeline: "ad-fingerprinting_get_stream_timeline",
+    streams: "ad-fingerprinting_list_streams",
+    groups: "ad-fingerprinting_list_stream_groups",
+  };
+  const MAX_STATIONS = 5;
+  const CACHE = { cache: { staleTime: 15 * 60e3, gcTime: 6 * 3600e3 } };
+
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === "class") n.className = v;
+      else if (k === "text") n.textContent = v;
+      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? "" : v);
+    }
+    for (const kid of kids.flat()) if (kid != null && kid !== false) n.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+    return n;
+  };
+  const nf = new Intl.NumberFormat("de-DE");
+  const dtf = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const dayf = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", weekday: "short", day: "2-digit", month: "2-digit" });
+  const hourf = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", weekday: "short", hour: "2-digit", minute: "2-digit" });
+  const fmtDT = (s) => (s ? dtf.format(new Date(s)) + " Uhr" : "–");
+  const norm = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const key = (a, t) => norm(a) + "\u0001" + norm(t);
+  const iso = (d) => d.toISOString().replace(/\.\d+Z$/, "Z");
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const KEYS = ["C", "C♯/D♭", "D", "D♯/E♭", "E", "F", "F♯/G♭", "G", "G♯/A♭", "A", "A♯/B♭", "B"];
+
+  const state = {
+    days: 7,
+    selected: [],
+    streams: [],
+    groups: [],
+    charts: null,
+    nav: [],
+    memo: new Map(),
+    runId: 0,
+  };
+  let mcp = null;
+
+  /* ---------- MCP access ---------- */
+  function errText(e) {
+    const code = e && e.code;
+    switch (code) {
+      case "server_not_connected":
+      case "server_not_found":
+        return "Der Connector „" + SERVER + "“ ist für dieses Konto nicht verbunden. Er wird in claude.ai unter Einstellungen → Connectors hinzugefügt; danach lädt die Seite die Daten.";
+      case "needs_reauth":
+        return "Die Anmeldung beim Connector „" + SERVER + "“ ist abgelaufen. Die Verbindung wird in claude.ai unter Einstellungen → Connectors erneuert.";
+      case "selection_required":
+        return "Es gibt mehrere Connectors mit dem Namen „" + SERVER + "“. claude.ai fragt, welcher gilt.";
+      case "approval_required":
+      case "not_in_manifest":
+      case "consent_required":
+        return "Die Seite hat noch keinen Zugriff auf den Connector. claude.ai fragt beim nächsten Laden danach.";
+      case "blocked_by_policy":
+        return "Die Richtlinie der Organisation sperrt diese Abfrage.";
+      case "server_unavailable":
+        return "Der aireal-Server antwortet gerade nicht. Ein neuer Versuch ist in etwa einer Minute sinnvoll.";
+      case "tool_error":
+        return "Der Server hat die Abfrage abgelehnt: " + (e.message || "ohne Begründung") + ".";
+      case "not_granted":
+      case "capability_disabled":
+      case "capability_removed":
+        return "In dieser Ansicht sind keine Live-Abfragen möglich. Live-Daten gibt es nur in claude.ai.";
+      default:
+        return "Die Abfrage ist fehlgeschlagen" + (e && e.message ? ": " + e.message : ".");
+    }
+  }
+  const FATAL = new Set(["server_not_connected", "server_not_found", "needs_reauth", "selection_required", "approval_required", "not_in_manifest", "consent_required", "blocked_by_policy", "not_granted", "capability_disabled", "capability_removed"]);
+
+  async function call(tool, input) {
+    if (!mcp) throw { code: "not_granted", message: "" };
+    const once = async () => {
+      const r = await mcp.callTool(SERVER, TOOL[tool], input, CACHE);
+      let p = r && r.payload;
+      if (typeof p === "string") { try { p = JSON.parse(p); } catch (_) { /* keep text */ } }
+      return p;
+    };
+    try { return await once(); }
+    catch (e) {
+      if (e && e.retryable) { await sleep((e.retryAfterMs || 900) + Math.random() * 800); return once(); }
+      throw e;
+    }
+  }
+  async function memo(k, fn) {
+    if (state.memo.has(k)) return state.memo.get(k);
+    const p = fn();
+    state.memo.set(k, p);
+    p.catch(() => state.memo.delete(k));
+    return p;
+  }
+  async function pool(tasks, size, onDone) {
+    const out = new Array(tasks.length);
+    let i = 0, done = 0, fatal = null;
+    const worker = async () => {
+      while (i < tasks.length && !fatal) {
+        const idx = i++;
+        try { out[idx] = await tasks[idx](); }
+        catch (e) { if (e && FATAL.has(e.code)) fatal = e; out[idx] = { __error: e }; }
+        done++; onDone && onDone(done, tasks.length);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(size, tasks.length) }, worker));
+    if (fatal) throw fatal;
+    return out;
+  }
+
+  /* ---------- Range ---------- */
+  function range(days = state.days) {
+    const to = new Date(Math.floor(Date.now() / 9e5) * 9e5);
+    const from = new Date(to.getTime() - days * 864e5);
+    return { from: iso(from), to: iso(to), fromD: from, toD: to };
+  }
+  function buckets(r) {
+    const n = state.days === 1 ? 6 : 7;
+    const step = (r.toD - r.fromD) / n;
+    return Array.from({ length: n }, (_, i) => {
+      const a = new Date(r.fromD.getTime() + i * step), b = new Date(r.fromD.getTime() + (i + 1) * step);
+      return { from: iso(a), to: iso(b), label: state.days === 1 ? hourf.format(a) : dayf.format(a) };
+    });
+  }
+
+  /* ---------- Exact counting (fleet) ---------- */
+  function mergeEntries(entries) {
+    const ps = new Map();
+    let plays = 0, first = null, last = null;
+    const spellings = new Set();
+    for (const e of entries) {
+      plays += e.total_plays || 0;
+      if (e.first_played_at && (!first || e.first_played_at < first)) first = e.first_played_at;
+      if (e.last_played_at && (!last || e.last_played_at > last)) last = e.last_played_at;
+      (e.spellings || []).forEach((s) => spellings.add(s));
+      for (const s of e.per_station || []) {
+        const cur = ps.get(s.stream_id) || { stream_id: s.stream_id, stream: s.stream, plays: 0 };
+        cur.plays += s.plays || 0; ps.set(s.stream_id, cur);
+      }
+    }
+    const per_station = [...ps.values()].sort((a, b) => b.plays - a.plays);
+    return { plays, stations: per_station.length, per_station, first, last, spellings: [...spellings] };
+  }
+  function verifyTrack(artist, title, r) {
+    return memo(["t", key(artist, title), r.from, r.to].join("|"), async () => {
+      const p = await call("airplay", { artist, title, from: r.from, to: r.to });
+      const hits = (p && p.tracks || []).filter((x) => norm(x.artist) === norm(artist) && norm(x.title) === norm(title));
+      if (!hits.length) return null;
+      return { artist: hits[0].artist, title: hits[0].title, ...mergeEntries(hits) };
+    });
+  }
+  function verifyArtist(name, r) {
+    return memo(["a", norm(name), r.from, r.to].join("|"), async () => {
+      const p = await call("airplay", { artist: name, group_by: "artist", from: r.from, to: r.to });
+      const hits = (p && p.tracks || []).filter((x) => norm(x.artist) === norm(name));
+      if (!hits.length) return null;
+      return { artist: hits[0].artist, tracks: hits[0].tracks || null, ...mergeEntries(hits) };
+    });
+  }
+
+  async function fleetCharts(r, progress) {
+    const trackFilters = [["artist", "e"], ["artist", "a"], ["artist", "i"], ["artist", "o"], ["artist", "u"], ["artist", "n"], ["title", "e"], ["title", "a"], ["title", "o"], ["title", "i"], ["title", "n"], ["title", "r"]];
+    const artistFilters = ["e", "a", "i", "o", "u", "n", "r"];
+    const tasks = [
+      ...trackFilters.map(([f, v]) => () => call("airplay", { [f]: v, from: r.from, to: r.to })),
+      ...artistFilters.map((v) => () => call("airplay", { artist: v, group_by: "artist", from: r.from, to: r.to })),
+      () => call("songs", { limit: 100 }),
+    ];
+    progress("Kandidaten sammeln", 0, 1);
+    const res = await pool(tasks, 6, (d, n) => progress("Kandidaten sammeln", d, n));
+    const tRows = new Map(), aRows = new Map();
+    const catalog = [];
+    res.forEach((p, i) => {
+      if (!p || p.__error) return;
+      if (i < trackFilters.length) {
+        for (const t of p.tracks || []) {
+          const k = key(t.artist, t.title);
+          const c = tRows.get(k) || { artist: t.artist, title: t.title, rows: new Map() };
+          for (const s of t.per_station || []) c.rows.set(s.stream_id, Math.max(c.rows.get(s.stream_id) || 0, s.plays));
+          tRows.set(k, c);
+        }
+      } else if (i < trackFilters.length + artistFilters.length) {
+        for (const t of p.tracks || []) {
+          const k = norm(t.artist);
+          const c = aRows.get(k) || { artist: t.artist, rows: new Map() };
+          for (const s of t.per_station || []) c.rows.set(s.stream_id, Math.max(c.rows.get(s.stream_id) || 0, s.plays));
+          aRows.set(k, c);
+        }
+      } else {
+        for (const s of p.songs || []) catalog.push(s);
+      }
+    });
+    const sum = (m) => { let x = 0; for (const v of m.values()) x += v; return x; };
+    const tCand = [...tRows.values()].map((c) => ({ artist: c.artist, title: c.title, score: sum(c.rows) })).sort((a, b) => b.score - a.score).slice(0, 55);
+    const seen = new Set(tCand.map((c) => key(c.artist, c.title)));
+    for (const s of catalog.sort((a, b) => (b.stations || 0) - (a.stations || 0))) {
+      if (tCand.length >= 75) break;
+      const k = key(s.artist, s.title);
+      if (!seen.has(k)) { seen.add(k); tCand.push({ artist: s.artist, title: s.title, score: 0 }); }
+    }
+    progress("Songs exakt zählen", 0, tCand.length);
+    const tracks = (await pool(tCand.map((c) => () => verifyTrack(c.artist, c.title, r)), 6, (d, n) => progress("Songs exakt zählen", d, n)))
+      .filter((x) => x && !x.__error);
+
+    const aScore = new Map();
+    for (const c of aRows.values()) aScore.set(norm(c.artist), { artist: c.artist, score: sum(c.rows) });
+    for (const t of tracks) {
+      const k = norm(t.artist), cur = aScore.get(k) || { artist: t.artist, score: 0 };
+      cur.score = Math.max(cur.score, t.plays); aScore.set(k, cur);
+    }
+    const aCand = [...aScore.values()].sort((a, b) => b.score - a.score).slice(0, 32);
+    progress("Interpreten exakt zählen", 0, aCand.length);
+    const artists = (await pool(aCand.map((c) => () => verifyArtist(c.artist, r)), 6, (d, n) => progress("Interpreten exakt zählen", d, n)))
+      .filter((x) => x && !x.__error);
+
+    const dedupe = (arr, kf) => { const m = new Map(); for (const x of arr) if (!m.has(kf(x))) m.set(kf(x), x); return [...m.values()]; };
+
+    // Second pass: a song's plays never exceed its artist's plays. Every artist at or above the
+    // current 20th-place song may hold a song that belongs in the Top 20, so all their titles are counted.
+    const ranked = dedupe(tracks, (t) => key(t.artist, t.title)).sort((a, b) => b.plays - a.plays);
+    const floor = ranked.length >= 20 ? ranked[19].plays : 0;
+    const known = new Set(ranked.map((t) => key(t.artist, t.title)));
+    const big = dedupe(artists, (a) => norm(a.artist)).filter((a) => a.plays >= floor).sort((a, b) => b.plays - a.plays).slice(0, 25);
+    progress("Titel der Interpreten prüfen", 0, big.length);
+    // Two title sources per artist: its airplay rows (capped at 200) and its catalog entries (not capped by airplay).
+    const lists = await pool(big.flatMap((a) => [
+      () => call("airplay", { artist: a.artist, from: r.from, to: r.to }),
+      () => call("songs", { artist: a.artist, limit: 100 }),
+    ]), 6, (d, n) => progress("Titel der Interpreten prüfen", d, n));
+    const extra = [];
+    lists.forEach((p, j) => {
+      if (!p || p.__error) return;
+      const who = big[Math.floor(j / 2)];
+      for (const t of p.tracks || p.songs || []) {
+        if (norm(t.artist) !== norm(who.artist)) continue;
+        const k = key(t.artist, t.title);
+        if (!known.has(k)) { known.add(k); extra.push({ artist: t.artist, title: t.title }); }
+      }
+    });
+    const extraChecked = extra.slice(0, 160);
+    progress("Weitere Songs exakt zählen", 0, extraChecked.length);
+    const more = (await pool(extraChecked.map((c) => () => verifyTrack(c.artist, c.title, r)), 6, (d, n) => progress("Weitere Songs exakt zählen", d, n)))
+      .filter((x) => x && !x.__error);
+    tracks.push(...more);
+    return {
+      mode: "fleet",
+      songs: dedupe(tracks, (t) => key(t.artist, t.title)).sort((a, b) => b.plays - a.plays || b.stations - a.stations || a.title.localeCompare(b.title, "de") || a.artist.localeCompare(b.artist, "de")).slice(0, 20),
+      artists: dedupe(artists, (a) => norm(a.artist)).sort((a, b) => b.plays - a.plays || b.stations - a.stations).slice(0, 20),
+      candidates: tCand.length + aCand.length + extraChecked.length,
+    };
+  }
+
+  /* ---------- Exact counting (selected stations via timeline) ---------- */
+  function stationPlays(id, r) {
+    return memo(["s", id, r.from, r.to].join("|"), async () => {
+      const chunks = [];
+      for (let t = r.fromD.getTime(); t < r.toD.getTime(); t += 864e5) chunks.push([new Date(t), new Date(Math.min(t + 864e5, r.toD.getTime()))]);
+      const res = await pool(chunks.map(([a, b]) => () => call("timeline", { stream_id: id, from: iso(a), to: iso(b) })), 2);
+      // A timeline also returns blocks that merely overlap its window; a play counts in the window it starts in.
+      const lo = r.fromD.getTime(), hi = r.toD.getTime();
+      const blocks = [];
+      const seenBlock = new Set();
+      for (const p of res) if (p && !p.__error) for (const b of p.blocks || []) {
+        if (b.type !== "music" && b.type !== "uncertain") continue;
+        const id = b.type + "|" + b.from;
+        if (seenBlock.has(id)) continue;
+        seenBlock.add(id); blocks.push(b);
+      }
+      blocks.sort((a, b) => (a.from < b.from ? -1 : 1));
+      // Raw ICY title -> canonical artist/title, learned from the music blocks.
+      const canon = new Map();
+      for (const b of blocks) if (b.type === "music" && b.meta && b.meta.artist && b.meta.raw_title) canon.set(norm(b.meta.raw_title), { artist: b.meta.artist, title: b.meta.title });
+      const plays = [];
+      const lastByKey = new Map();
+      let lastRaw = null;
+      for (const b of blocks) {
+        let artist, title;
+        if (b.type === "music") {
+          if (!b.meta || !b.meta.artist) continue;
+          artist = b.meta.artist; title = b.meta.title;
+          lastRaw = norm(b.meta.raw_title || artist + " - " + title);
+        } else {
+          // "uncertain" = the station's title is stale. It is a play only when the station announced a NEW
+          // title that speech or ads then covered completely; a title left over from the previous song is not.
+          const st = b.meta && b.meta.stale_title;
+          if (!st) continue;
+          const raw = norm(st);
+          if (raw === lastRaw) continue;
+          lastRaw = raw;
+          const c = canon.get(raw);
+          if (!c) continue;
+          artist = c.artist; title = c.title;
+        }
+        const k = key(artist, title);
+        const t0 = Date.parse(b.from), t1 = Date.parse(b.to);
+        const prev = lastByKey.get(k);
+        lastByKey.set(k, t1);
+        if (prev && t0 - prev < 75e3) continue;
+        if (t0 < lo || t0 >= hi) continue;
+        plays.push({ stream_id: id, artist, title, at: b.from });
+      }
+      return plays;
+    });
+  }
+  async function stationCharts(ids, r, progress) {
+    progress("Sendeabläufe lesen", 0, ids.length);
+    const res = await pool(ids.map((id) => () => stationPlays(id, r)), 2, (d, n) => progress("Sendeabläufe lesen", d, n));
+    const all = res.filter((x) => Array.isArray(x)).flat();
+    const name = (id) => (state.streams.find((s) => s.id === id) || {}).name || id;
+    const agg = (kf, mk) => {
+      const m = new Map();
+      for (const p of all) {
+        const k = kf(p);
+        const c = m.get(k) || mk(p);
+        c.plays++; c.ps.set(p.stream_id, (c.ps.get(p.stream_id) || 0) + 1);
+        if (!c.first || p.at < c.first) c.first = p.at;
+        if (!c.last || p.at > c.last) c.last = p.at;
+        if (c.titles) c.titles.add(norm(p.title));
+        m.set(k, c);
+      }
+      return [...m.values()].map((c) => ({ ...c, stations: c.ps.size, per_station: [...c.ps].map(([id, n]) => ({ stream_id: id, stream: name(id), plays: n })).sort((a, b) => b.plays - a.plays), tracks: c.titles ? c.titles.size : undefined }))
+        .sort((a, b) => b.plays - a.plays || b.stations - a.stations).slice(0, 20);
+    };
+    return {
+      mode: "stations",
+      plays: all,
+      songs: agg((p) => key(p.artist, p.title), (p) => ({ artist: p.artist, title: p.title, plays: 0, ps: new Map() })),
+      artists: agg((p) => norm(p.artist), (p) => ({ artist: p.artist, plays: 0, ps: new Map(), titles: new Set() })),
+    };
+  }
+
+  /* ---------- Status ---------- */
+  function setLamp(on) { $("lamp").classList.toggle("on", on); }
+  function progress(label, done, total) {
+    const s = $("status");
+    s.hidden = false; s.className = "status";
+    s.replaceChildren(
+      el("div", { class: "panel-head" }, el("span", { class: "label", text: label }), el("span", { class: "num hint", text: total > 1 ? done + " / " + total : "" })),
+      el("div", { class: "meter", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(total), "aria-valuenow": String(done) },
+        el("span", { style: "width:" + (total ? Math.round((done / total) * 100) : 5) + "%" })),
+    );
+  }
+  function showError(e, retry) {
+    const s = $("status");
+    s.hidden = false; s.className = "status err";
+    s.replaceChildren(el("span", { class: "dot" }, el("i"), "Daten nicht verfügbar"), el("span", { text: errText(e) }),
+      retry ? el("div", {}, el("button", { class: "btn", type: "button", style: "color:var(--text-primary);border-color:var(--rule)", onclick: retry, text: "Erneut laden" })) : "");
+  }
+  function clearStatus() { $("status").hidden = true; }
+
+  /* ---------- Station picker ---------- */
+  function renderChips() {
+    const box = $("chips");
+    const kids = state.selected.map((id) => {
+      const s = state.streams.find((x) => x.id === id);
+      return el("span", { class: "chip" }, s ? s.name : id,
+        el("button", { type: "button", "aria-label": "Entfernen", onclick: (ev) => { ev.stopPropagation(); state.selected = state.selected.filter((x) => x !== id); renderChips(); renderList(); } }, "×"));
+    });
+    if (!state.selected.length) kids.push(el("span", { class: "chip all", text: "Alle Sender" }));
+    kids.push(el("button", { type: "button", class: "btn", id: "pick", onclick: togglePop, "aria-expanded": String(!$("pop").hidden) }, "Sender wählen"));
+    if (state.selected.length) kids.push(el("button", { type: "button", class: "btn", onclick: () => { state.selected = []; renderChips(); renderList(); }, text: "Alle Sender" }));
+    box.replaceChildren(...kids);
+  }
+  function togglePop() {
+    const p = $("pop"); p.hidden = !p.hidden; renderChips();
+    if (!p.hidden) { renderList(); $("q").focus(); }
+  }
+  function renderList() {
+    const q = norm($("q").value);
+    const items = state.streams.filter((s) => !q || norm(s.name).includes(q));
+    $("list").replaceChildren(...(items.length ? items.map((s) => {
+      const on = state.selected.includes(s.id);
+      const cb = el("input", { type: "checkbox", id: "st-" + s.id, checked: on, disabled: !on && state.selected.length >= MAX_STATIONS });
+      cb.addEventListener("change", () => {
+        if (cb.checked && state.selected.length < MAX_STATIONS) state.selected.push(s.id);
+        else state.selected = state.selected.filter((x) => x !== s.id);
+        renderChips(); renderList();
+      });
+      return el("label", { for: "st-" + s.id }, cb, s.name);
+    }) : [el("div", { class: "empty", text: state.streams.length ? "Kein Sender passt zur Suche." : "Senderliste wird geladen …" })]));
+    $("groups").replaceChildren(...state.groups.filter((g) => g.stream_count > 0).map((g) =>
+      el("button", { type: "button", onclick: () => selectGroup(g.id), text: g.name })));
+  }
+  async function selectGroup(gid) {
+    const ids = state.streams.filter((s) => (s.group_ids || []).includes(gid)).map((s) => s.id);
+    state.selected = ids.slice(0, MAX_STATIONS);
+    renderChips(); renderList();
+  }
+  document.addEventListener("click", (ev) => {
+    const p = $("pop");
+    if (!p.hidden && ev.target.isConnected && !ev.target.closest(".picker")) { p.hidden = true; renderChips(); }
+  });
+  $("q").addEventListener("input", renderList);
+
+  /* ---------- Rendering: charts ---------- */
+  function bar(value, max) { return el("div", { class: "track" }, el("span", { style: "width:" + Math.max(2, (value / (max || 1)) * 100) + "%" })); }
+  function chartRow(i, main, sub, value, max, stations, onclick) {
+    return el("button", { class: i === 0 ? "row emph" : "row", type: "button", onclick },
+      el("span", { class: "rank", text: String(i + 1) }),
+      el("span", { class: "who" }, el("span", { class: "t", text: main }), sub ? el("span", { class: "a", text: sub }) : null, bar(value, max)),
+      el("span", { class: "fig" }, el("b", { text: nf.format(value) }), el("small", { text: stations === 1 ? "1 Sender" : nf.format(stations) + " Sender" })));
+  }
+  function scopeText() {
+    if (!state.selected.length) return "alle Sender";
+    const names = state.selected.map((id) => (state.streams.find((s) => s.id === id) || {}).name || id);
+    return names.join(", ");
+  }
+  function renderCharts() {
+    const c = state.charts;
+    const view = $("view");
+    if (!c) {
+      view.replaceChildren(el("section", { class: "panel" }, el("h2", { text: "Noch keine Charts geladen" }),
+        el("p", { class: "note", text: "Ohne Senderauswahl zählt der Monitor über alle Sender; ein Lauf dauert etwa eine halbe Minute. Mit Senderauswahl wird exakt aus dem Sendeablauf gezählt." })));
+      return;
+    }
+    const maxS = c.songs[0] ? c.songs[0].plays : 1, maxA = c.artists[0] ? c.artists[0].plays : 1;
+    const total = c.mode === "stations" ? c.plays.length : null;
+    const strip = el("div", { class: "strip" },
+      el("div", { class: "kv" }, el("span", { class: "label", text: "Zeitraum" }), el("b", { text: state.days === 1 ? "24 h" : "7 Tage" })),
+      el("div", { class: "kv" }, el("span", { class: "label", text: "Sender" }), el("b", { text: state.selected.length ? nf.format(state.selected.length) : "alle" })),
+      total != null ? el("div", { class: "kv" }, el("span", { class: "label", text: "Plays gesamt" }), el("b", { text: nf.format(total) })) : null,
+      el("div", { class: "kv" }, el("span", { class: "label", text: "Stand" }), el("b", { text: c.at ? dtf.format(c.at) : "–" })),
+    );
+    const songs = c.songs.length ? c.songs.map((t, i) => chartRow(i, t.title, t.artist, t.plays, maxS, t.stations, () => go({ name: "song", artist: t.artist, title: t.title })))
+      : [el("div", { class: "empty", text: "Keine Plays im Zeitraum." })];
+    const arts = c.artists.length ? c.artists.map((a, i) => chartRow(i, a.artist, a.tracks ? nf.format(a.tracks) + (a.tracks === 1 ? " Titel" : " Titel") : null, a.plays, maxA, a.stations, () => go({ name: "artist", artist: a.artist })))
+      : [el("div", { class: "empty", text: "Keine Plays im Zeitraum." })];
+    view.replaceChildren(el("div", { class: "wrap", style: "gap:16px" },
+      strip,
+      el("p", { class: "note", text: "Gezählt über " + scopeText() + ". " + (c.mode === "fleet" ? "Exakt nachgezählt aus " + nf.format(c.candidates) + " Kandidaten." : "Exakt aus dem Sendeablauf gezählt.") + " Jeder Eintrag führt zu den Details." }),
+      el("div", { class: "grid2" },
+        el("section", { class: "panel" }, el("div", { class: "panel-head" }, el("h2", { text: "Top 20 Songs" }), el("span", { class: "label", text: "Plays" })), el("div", { class: "rows" }, songs)),
+        el("section", { class: "panel" }, el("div", { class: "panel-head" }, el("h2", { text: "Top 20 Interpreten" }), el("span", { class: "label", text: "Plays" })), el("div", { class: "rows" }, arts)),
+      )));
+  }
+
+  /* ---------- Rendering: detail helpers ---------- */
+  function crumbs() {
+    const parts = [el("button", { type: "button", onclick: () => { state.nav = []; render(); }, text: "Charts" })];
+    state.nav.forEach((v, i) => {
+      parts.push(el("span", { class: "sep", text: "›" }));
+      const label = v.name === "song" ? v.title : v.name === "artist" ? v.artist : v.stream;
+      if (i === state.nav.length - 1) parts.push(el("span", { text: label }));
+      else parts.push(el("button", { type: "button", onclick: () => { state.nav = state.nav.slice(0, i + 1); render(); }, text: label }));
+    });
+    return el("nav", { class: "crumbs", "aria-label": "Pfad" }, parts);
+  }
+  function kpis(list) {
+    return el("div", { class: "kpis" }, list.map(([l, v]) => el("div", {}, el("span", { class: "label", text: l }), el("b", { text: v }))));
+  }
+  function niceMax(v) {
+    if (v <= 5) return 5;
+    const p = Math.pow(10, Math.floor(Math.log10(v)));
+    for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p;
+    return 10 * p;
+  }
+  function barChart(points, title) {
+    const W = 720, H = 240, L = 44, R = 12, T = 16, B = 40;
+    const max = niceMax(Math.max(1, ...points.map((p) => p.v)));
+    const iw = W - L - R, ih = H - T - B, bw = iw / points.length;
+    const ns = "http://www.w3.org/2000/svg";
+    const s = (tag, a) => { const n = document.createElementNS(ns, tag); for (const k in a) n.setAttribute(k, a[k]); return n; };
+    const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": title });
+    for (let i = 0; i <= 4; i++) {
+      const v = (max / 4) * i, y = T + ih - (v / max) * ih;
+      svg.append(s("line", { x1: L, x2: W - R, y1: y, y2: y, stroke: "var(--rule)", "stroke-width": i === 0 ? 1.2 : 1 }));
+      const t = s("text", { x: L - 8, y: y + 4, "text-anchor": "end", fill: "var(--text-secondary)", "font-size": 11, "font-family": "var(--font-web)" });
+      t.textContent = nf.format(Math.round(v)); svg.append(t);
+    }
+    const peak = Math.max(...points.map((p) => p.v));
+    points.forEach((p, i) => {
+      const h = (p.v / max) * ih, x = L + i * bw + bw * 0.18, w = bw * 0.64;
+      const r = s("rect", { x, y: T + ih - h, width: w, height: Math.max(h, p.v ? 1 : 0), fill: p.v === peak && peak > 0 ? "var(--lime)" : "var(--leinen-3)", ...(p.v === peak && peak > 0 ? { stroke: "var(--lime-contour)", "stroke-width": 1 } : {}) });
+      const tip = s("title", {}); tip.textContent = p.label + ": " + nf.format(p.v) + " Plays"; r.append(tip); svg.append(r);
+      const v = s("text", { x: x + w / 2, y: T + ih - h - 5, "text-anchor": "middle", fill: "var(--text-primary)", "font-size": 11, "font-family": "var(--font-web)" });
+      v.textContent = p.v ? nf.format(p.v) : ""; svg.append(v);
+      const lab = s("text", { x: x + w / 2, y: H - 14, "text-anchor": "middle", fill: "var(--text-secondary)", "font-size": 11, "font-family": "var(--font-web)" });
+      lab.textContent = p.label; svg.append(lab);
+    });
+    return el("div", { class: "chartbox" }, svg);
+  }
+  function stationList(per, onPick) {
+    const max = per[0] ? per[0].plays : 1;
+    const LIMIT = 15;
+    const box = el("div", { class: "rows" });
+    const draw = (all) => {
+      const shown = all ? per : per.slice(0, LIMIT);
+      const rows = shown.map((s, i) => el("button", { class: "row", type: "button", onclick: () => onPick(s) },
+        el("span", { class: "rank", text: String(i + 1) }),
+        el("span", { class: "who" }, el("span", { class: "t", text: s.stream }), bar(s.plays, max)),
+        el("span", { class: "fig" }, el("b", { text: nf.format(s.plays) }), el("small", { text: "Plays" }))));
+      if (per.length > LIMIT) rows.push(el("button", { type: "button", class: "btn", style: "color:var(--text-primary);border-color:var(--rule);justify-self:start;margin-top:8px",
+        onclick: () => draw(!all), text: all ? "Nur die ersten " + LIMIT + " Sender" : "Alle " + nf.format(per.length) + " Sender" }));
+      box.replaceChildren(...rows);
+    };
+    draw(false);
+    return box;
+  }
+  function panel(title, ...kids) { return el("section", { class: "panel" }, el("h2", { text: title }), ...kids); }
+  function loadingPanel(t) { return el("section", { class: "panel" }, el("div", { class: "empty", text: t })); }
+  function errorPanel(e) { return el("section", { class: "panel" }, el("div", { class: "empty", text: errText(e) })); }
+  const openStation = (s) => go({ name: "station", stream_id: s.stream_id, stream: s.stream });
+
+  /* ---------- Song detail ---------- */
+  async function renderSong(v, run) {
+    const r = range();
+    const view = $("view");
+    const head = el("div", { class: "hero" }, el("span", { class: "label", text: "Song" }), el("h2", { text: v.title }),
+      el("div", { class: "by" }, el("button", { type: "button", onclick: () => go({ name: "artist", artist: v.artist }), text: v.artist })));
+    const kpiBox = el("div", {}, loadingPanel("Plays werden gezählt …"));
+    const trend = loadingPanel("Verlauf wird geladen …");
+    const stations = loadingPanel("Senderverteilung wird geladen …");
+    const facts = loadingPanel("Katalogdaten werden geladen …");
+    view.replaceChildren(el("div", { class: "wrap", style: "gap:16px" }, crumbs(), head, kpiBox, el("div", { class: "grid2" }, trend, stations), facts));
+    const alive = () => run === state.runId;
+
+    verifyTrack(v.artist, v.title, r).then((t) => {
+      if (!alive()) return;
+      if (!t) { kpiBox.replaceChildren(el("section", { class: "panel" }, el("div", { class: "empty", text: "Im Zeitraum wurde dieser Titel auf keinem Sender angekündigt." }))); stations.replaceChildren(); return; }
+      kpiBox.replaceChildren(kpis([
+        ["Plays (" + (state.days === 1 ? "24 h" : "7 Tage") + ", alle Sender)", nf.format(t.plays)],
+        ["Sender", nf.format(t.stations)],
+        ["Ø Plays je Sender", (t.plays / Math.max(1, t.stations)).toLocaleString("de-DE", { maximumFractionDigits: 1 })],
+        ["Erster Play", fmtDT(t.first)],
+        ["Letzter Play", fmtDT(t.last)],
+      ]));
+      const sel = new Set(state.selected);
+      const per = sel.size ? [...t.per_station.filter((s) => sel.has(s.stream_id)), ...t.per_station.filter((s) => !sel.has(s.stream_id))] : t.per_station;
+      stations.replaceChildren(el("div", { class: "panel-head" }, el("h2", { text: "Plays je Sender" }), el("span", { class: "label", text: nf.format(t.stations) + " Sender" })),
+        stationList(per, openStation),
+        t.spellings && t.spellings.length > 1 ? el("p", { class: "note", text: "Zusammengefasste Schreibweisen: " + t.spellings.join(" · ") }) : "");
+    }).catch((e) => alive() && kpiBox.replaceChildren(errorPanel(e)));
+
+    const bs = buckets(r);
+    pool(bs.map((b) => () => verifyTrack(v.artist, v.title, { from: b.from, to: b.to })), 4).then((res) => {
+      if (!alive()) return;
+      const pts = bs.map((b, i) => ({ label: b.label, v: res[i] && !res[i].__error && res[i] ? res[i].plays : 0 }));
+      trend.replaceChildren(el("div", { class: "panel-head" }, el("h2", { text: state.days === 1 ? "Plays je 4 Stunden" : "Plays je Tag" }), el("span", { class: "label", text: "alle Sender" })),
+        barChart(pts, "Plays im Zeitverlauf"));
+    }).catch((e) => alive() && trend.replaceChildren(errorPanel(e)));
+
+    memo("c|" + key(v.artist, v.title), () => call("songs", { artist: v.artist, title: v.title, limit: 10 })).then((p) => {
+      if (!alive()) return;
+      const list = (p && p.songs) || [];
+      const s = list.find((x) => norm(x.artist) === norm(v.artist) && norm(x.title) === norm(v.title)) || list.find((x) => norm(x.title) === norm(v.title));
+      if (!s) { facts.replaceChildren(el("h2", { text: "Katalog" }), el("div", { class: "empty", text: "Für diesen Titel gibt es noch keinen Eintrag im Musikkatalog." })); return; }
+      const f = [];
+      const add = (l, val) => val != null && val !== "" && f.push(el("div", {}, el("span", { class: "label", text: l }), el("span", {}, val)));
+      add("Erscheinungsjahr", s.first_release_year);
+      add("Länge", s.length_secs ? Math.floor(s.length_secs / 60) + ":" + String(Math.round(s.length_secs % 60)).padStart(2, "0") + " min" : null);
+      add("Tempo", s.bpm ? Math.round(s.bpm) + " BPM" : null);
+      add("Tonart", s.musical_key != null && s.musical_key >= 0 ? KEYS[s.musical_key] + (s.musical_mode === 1 ? "-Dur" : "-Moll") : null);
+      add("Lautheit", s.loudness_db != null ? s.loudness_db.toLocaleString("de-DE", { maximumFractionDigits: 1 }) + " dB" : null);
+      add("ISRC", s.isrcs && s.isrcs.length ? s.isrcs.slice(0, 3).join(", ") + (s.isrcs.length > 3 ? " (+" + (s.isrcs.length - 3) + ")" : "") : null);
+      add("Erkannt auf", s.stations ? nf.format(s.stations) + " Sendern" + (s.disputes ? ", " + s.disputes + " Widersprüche" : "") : null);
+      if (s.spotify_track_id) f.push(el("div", {}, el("span", { class: "label", text: "Spotify" }), el("a", { href: "https://open.spotify.com/track/" + encodeURIComponent(s.spotify_track_id), target: "_blank", rel: "noopener", text: "Titel öffnen" })));
+      const feats = [["Tanzbarkeit", s.danceability], ["Energie", s.energy], ["Stimmung", s.valence], ["Akustisch", s.acousticness]].filter(([, x]) => x != null);
+      facts.replaceChildren(el("h2", { text: "Katalog" }), el("div", { class: "facts" }, f),
+        s.genres && s.genres.length ? el("div", { class: "tags" }, s.genres.slice(0, 8).map((g) => el("span", { class: "tag", text: g }))) : "",
+        feats.length ? el("div", { class: "rows", style: "gap:6px;max-width:520px" }, feats.map(([l, x]) => el("div", { class: "feat" }, el("span", { text: l }), bar(x, 1), el("span", { class: "num", text: Math.round(x * 100) + " %" })))) : "");
+    }).catch((e) => alive() && facts.replaceChildren(errorPanel(e)));
+  }
+
+  /* ---------- Artist detail ---------- */
+  async function renderArtist(v, run) {
+    const r = range();
+    const view = $("view");
+    const kpiBox = el("div", {}, loadingPanel("Plays werden gezählt …"));
+    const songs = loadingPanel("Titel werden gezählt …");
+    const stations = loadingPanel("Senderverteilung wird geladen …");
+    view.replaceChildren(el("div", { class: "wrap", style: "gap:16px" }, crumbs(),
+      el("div", { class: "hero" }, el("span", { class: "label", text: "Interpret" }), el("h2", { text: v.artist })),
+      kpiBox, el("div", { class: "grid2" }, songs, stations)));
+    const alive = () => run === state.runId;
+    verifyArtist(v.artist, r).then((a) => {
+      if (!alive()) return;
+      if (!a) { kpiBox.replaceChildren(el("section", { class: "panel" }, el("div", { class: "empty", text: "Im Zeitraum wurde dieser Interpret auf keinem Sender angekündigt." }))); stations.replaceChildren(); return; }
+      kpiBox.replaceChildren(kpis([
+        ["Plays (" + (state.days === 1 ? "24 h" : "7 Tage") + ", alle Sender)", nf.format(a.plays)],
+        ["Sender", nf.format(a.stations)],
+        ["Verschiedene Titel", a.tracks != null ? nf.format(a.tracks) : "–"],
+        ["Letzter Play", fmtDT(a.last)],
+      ]));
+      stations.replaceChildren(el("div", { class: "panel-head" }, el("h2", { text: "Plays je Sender" }), el("span", { class: "label", text: nf.format(a.stations) + " Sender" })), stationList(a.per_station, openStation));
+    }).catch((e) => alive() && kpiBox.replaceChildren(errorPanel(e)));
+
+    memo("at|" + norm(v.artist) + "|" + r.from, () => call("airplay", { artist: v.artist, from: r.from, to: r.to })).then(async (p) => {
+      const titles = [];
+      const seen = new Set();
+      for (const t of (p && p.tracks) || []) {
+        if (norm(t.artist) !== norm(v.artist)) continue;
+        const k = norm(t.title);
+        if (!seen.has(k)) { seen.add(k); titles.push(t.title); }
+      }
+      const res = (await pool(titles.slice(0, 20).map((t) => () => verifyTrack(v.artist, t, r)), 5)).filter((x) => x && !x.__error).sort((a, b) => b.plays - a.plays);
+      if (!alive()) return;
+      const max = res[0] ? res[0].plays : 1;
+      songs.replaceChildren(el("div", { class: "panel-head" }, el("h2", { text: "Titel" }), el("span", { class: "label", text: "Plays" })),
+        res.length ? el("div", { class: "rows" }, res.map((t, i) => chartRow(i, t.title, null, t.plays, max, t.stations, () => go({ name: "song", artist: t.artist, title: t.title }))))
+          : el("div", { class: "empty", text: "Keine Titel im Zeitraum." }));
+    }).catch((e) => alive() && songs.replaceChildren(errorPanel(e)));
+  }
+
+  /* ---------- Station detail ---------- */
+  async function renderStation(v, run) {
+    const r = range();
+    const view = $("view");
+    const body = loadingPanel("Sendeablauf wird gelesen …");
+    view.replaceChildren(el("div", { class: "wrap", style: "gap:16px" }, crumbs(),
+      el("div", { class: "hero" }, el("span", { class: "label", text: "Sender" }), el("h2", { text: v.stream })), body));
+    const alive = () => run === state.runId;
+    try {
+      const c = await stationCharts([v.stream_id], r, () => {});
+      if (!alive()) return;
+      const plays = c.plays;
+      const bs = buckets(r);
+      const pts = bs.map((b) => ({ label: b.label, v: plays.filter((p) => p.at >= b.from && p.at < b.to).length }));
+      const maxS = c.songs[0] ? c.songs[0].plays : 1, maxA = c.artists[0] ? c.artists[0].plays : 1;
+      body.replaceWith(el("div", { class: "wrap", style: "gap:16px" },
+        kpis([["Musik-Plays", nf.format(plays.length)], ["Verschiedene Titel", nf.format(new Set(plays.map((p) => key(p.artist, p.title))).size)], ["Verschiedene Interpreten", nf.format(new Set(plays.map((p) => norm(p.artist))).size)]]),
+        panel(state.days === 1 ? "Musik-Plays je 4 Stunden" : "Musik-Plays je Tag", barChart(pts, "Plays im Zeitverlauf")),
+        el("div", { class: "grid2" },
+          el("section", { class: "panel" }, el("div", { class: "panel-head" }, el("h2", { text: "Top 20 Songs" }), el("span", { class: "label", text: "Plays" })),
+            el("div", { class: "rows" }, c.songs.length ? c.songs.map((t, i) => chartRow(i, t.title, t.artist, t.plays, maxS, 1, () => go({ name: "song", artist: t.artist, title: t.title }))) : el("div", { class: "empty", text: "Keine Musik-Plays mit Titelangabe im Zeitraum." }))),
+          el("section", { class: "panel" }, el("div", { class: "panel-head" }, el("h2", { text: "Top 20 Interpreten" }), el("span", { class: "label", text: "Plays" })),
+            el("div", { class: "rows" }, c.artists.length ? c.artists.map((a, i) => chartRow(i, a.artist, nf.format(a.tracks) + " Titel", a.plays, maxA, 1, () => go({ name: "artist", artist: a.artist }))) : el("div", { class: "empty", text: "Keine Plays." }))))));
+    } catch (e) { if (alive()) body.replaceWith(errorPanel(e)); }
+  }
+
+  /* ---------- Navigation ---------- */
+  function go(v) { state.nav.push(v); render(); window.scrollTo(0, 0); }
+  function render() {
+    const run = ++state.runId;
+    const v = state.nav[state.nav.length - 1];
+    if (!v) return renderCharts();
+    if (v.name === "song") return renderSong(v, run);
+    if (v.name === "artist") return renderArtist(v, run);
+    if (v.name === "station") return renderStation(v, run);
+  }
+
+  async function loadCharts() {
+    if (!mcp) { showError({ code: "not_granted" }); return; }
+    const btn = $("run");
+    btn.disabled = true; setLamp(true);
+    state.nav = []; state.runId++;
+    const r = range();
+    try {
+      const c = state.selected.length ? await stationCharts(state.selected.slice(), r, progress) : await fleetCharts(r, progress);
+      c.at = r.toD;
+      $("foot").textContent = "MAS Partners · Airplay Monitor · Quelle aireal Ad Fingerprinting · Stand " + dtf.format(r.toD);
+      state.charts = c;
+      clearStatus();
+      render();
+    } catch (e) {
+      showError(e, loadCharts);
+    } finally { btn.disabled = false; setLamp(false); }
+  }
+
+  /* ---------- Wire up ---------- */
+  function setDays(d) {
+    state.days = d;
+    $("d1").setAttribute("aria-pressed", String(d === 1));
+    $("d7").setAttribute("aria-pressed", String(d === 7));
+  }
+  $("d1").addEventListener("click", () => setDays(1));
+  $("d7").addEventListener("click", () => setDays(7));
+  $("run").addEventListener("click", loadCharts);
+  renderChips();
+  renderCharts();
+
+  (async () => {
+    const use = window.claude && window.claude.use ? window.claude.use("mcp") : Promise.resolve(null);
+    mcp = await use.catch(() => null);
+    if (!mcp) {
+      showError({ code: "not_granted" });
+      $("run").disabled = true;
+      return;
+    }
+    try {
+      const [st, gr] = await Promise.all([call("streams", {}), call("groups", {})]);
+      state.streams = ((st && st.items) || []).filter((s) => s.enabled !== false).sort((a, b) => a.name.localeCompare(b.name, "de"));
+      state.groups = (gr && gr.items) || [];
+      $("source").textContent = "Airplay-Charts aus den Titelangaben (ICY) von " + nf.format(state.streams.length) + " überwachten Radiostreams im aireal Ad Fingerprinting.";
+      renderList();
+      loadCharts();
+    } catch (e) {
+      showError(e, () => location.reload());
+    }
+  })();
+})();
+</script>
+</body></html>

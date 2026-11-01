@@ -16,7 +16,7 @@
   const plays = [];
   streams.forEach((s, si) => {
     for (let k = 0; k < 7 * 24 * 12; k++) { // ~12 songs/hour/station over 7 days
-      const t = now - 7 * 864e5 + k * 300e3 + rnd() * 60e3;
+      const t = now - 7 * 864e5 + k * 300e3 + rnd() * 30e3;
       let idx;
       const r = rnd();
       if (r < 0.25) idx = Math.floor(rnd() * 6);            // broad hits 1-6 on every station
